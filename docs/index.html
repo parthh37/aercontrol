@@ -47,14 +47,14 @@
             <small data-asset="AerControl-macOS.dmg">.dmg · macOS 14+</small>
           </a>
           <a class="btn btn-primary" data-platform="win-x64"
-             href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-x64.zip">
+             href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-Setup-x64.exe">
             <span>Download for Windows</span>
-            <small data-asset="AerControl-windows-x64.zip">x64 .zip · Windows 10/11</small>
+            <small data-asset="AerControl-Setup-x64.exe">Setup .exe · Windows 10/11</small>
           </a>
           <a class="btn btn-ghost" data-platform="win-arm64"
-             href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-ARM64.zip">
+             href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-Setup-ARM64.exe">
             <span>Download for Windows on Arm</span>
-            <small data-asset="AerControl-windows-ARM64.zip">ARM64 .zip · Windows 11</small>
+            <small data-asset="AerControl-Setup-ARM64.exe">ARM64 Setup .exe · Windows 11</small>
           </a>
         </div>
         <p class="meta">
@@ -172,21 +172,24 @@
           <h3>Windows</h3>
           <p class="req">Windows 10 (19041) or later · Windows 11 for widgets</p>
           <div class="btn-row">
-            <a class="btn btn-primary" href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-x64.zip">
-              <span>Download for x64</span>
-              <small data-asset="AerControl-windows-x64.zip">Intel and AMD PCs</small>
+            <a class="btn btn-primary" href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-Setup-x64.exe">
+              <span>Download Setup for x64</span>
+              <small data-asset="AerControl-Setup-x64.exe">Intel and AMD PCs</small>
             </a>
-            <a class="btn btn-ghost" href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-ARM64.zip">
-              <span>Download for ARM64</span>
-              <small data-asset="AerControl-windows-ARM64.zip">Snapdragon PCs</small>
+            <a class="btn btn-ghost" href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-Setup-ARM64.exe">
+              <span>Download Setup for ARM64</span>
+              <small data-asset="AerControl-Setup-ARM64.exe">Snapdragon PCs</small>
             </a>
           </div>
         </div>
         <ol class="steps">
-          <li>Extract the zip to a folder.</li>
           <li>
-            Right-click <code>install.ps1</code> › <b>Run with PowerShell</b>. Approve the one admin prompt:
-            it trusts AerControl's signing certificate, installs the Windows App Runtime and then AerControl.
+            Run <b>AerControl-Setup</b>. If SmartScreen says it doesn't recognize the app, click
+            <b>More info › Run anyway</b>.
+          </li>
+          <li>
+            Approve the one admin prompt. It trusts AerControl's signing certificate, then Setup installs
+            the Windows App Runtime and AerControl.
           </li>
           <li>Start <b>AerControl</b> from the Start menu. It lives in the system tray.</li>
           <li>Open <b>Devices</b>, click <b>Scan</b> and choose <b>Smart Matic</b>.</li>
@@ -195,6 +198,15 @@
         <div class="extra">
           <h4>Add the widget (Windows 11)</h4>
           <p>Press <kbd>Win</kbd><kbd>W</kbd>, click <b>+</b>, choose <b>AerControl</b> › <b>aer Spray</b>. Updates install automatically through App Installer.</p>
+        </div>
+        <div class="extra">
+          <h4>No internet on the PC, or Setup failed?</h4>
+          <p>
+            Setup writes a log to <code>%LOCALAPPDATA%\AerControl\install.log</code>. To install offline instead, download
+            <a href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-x64.zip">the x64 zip</a> (or <a href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-ARM64.zip">ARM64</a>),
+            extract it, right-click <code>install.ps1</code> › <b>Run with PowerShell</b>.
+            Uninstall from <b>Settings › Apps</b> like any other app.
+          </p>
         </div>
       </div>
 
@@ -238,6 +250,10 @@ aerctl refill-reset --yes</code></pre>
       <details>
         <summary>“Timed out during connect”</summary>
         <p>The phone app is probably still connected. Close it, or turn off Bluetooth on the phone, then spray again.</p>
+      </details>
+      <details>
+        <summary>Windows: “The aer GATT service wasn't found”</summary>
+        <p>Close the phone app first. If you paired <b>Smart Matic</b> in Windows Bluetooth settings, remove it there: AerControl doesn't need pairing, and a paired device can leave Windows with an out-of-date list of services.</p>
       </details>
       <details>
         <summary>Nothing sprays, and there's no error</summary>
