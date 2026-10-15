@@ -18,6 +18,7 @@ Widgets Board on Windows 11).
 
 **Download:** [latest release](../../releases/latest): `AerControl-macOS.dmg`, or
 `AerControl-windows-x64.zip` / `-ARM64.zip`. The apps check for updates daily.
+Step-by-step install guide: **[parthh37.github.io/aercontrol](https://parthh37.github.io/aercontrol/)**.
 
 | | macOS 14+ | Windows 10/11 |
 |---|---|---|

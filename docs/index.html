@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AerControl: spray your aer Smart Matic from macOS and Windows</title>
+  <meta name="description" content="Desktop control for the Godrej aer Smart Matic Bluetooth air freshener: a Spray button, menu bar and tray, hotkey, schedules, widgets and a CLI. Free for macOS and Windows.">
+  <meta property="og:title" content="AerControl">
+  <meta property="og:description" content="Spray your Godrej aer Smart Matic from macOS and Windows.">
+  <meta property="og:image" content="screenshots/macos-spray.png">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#install">Skip to install</a>
+
+  <header class="nav">
+    <a class="brand" href="#top" aria-label="AerControl home">
+      <img src="assets/icon.png" alt="" width="28" height="28">
+      <span>AerControl</span>
+    </a>
+    <nav aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/parthh37/aercontrol">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- Hero: the page's thesis is the app's own Spray button -->
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">For the Godrej aer Smart Matic</p>
+        <h1>Spray from your&nbsp;desktop.</h1>
+        <p class="lede">
+          AerControl talks to your aer over Bluetooth. Spray it from the menu bar,
+          the tray, a hotkey, a widget or a schedule. No phone needed.
+        </p>
+
+        <div class="cta" data-cta>
+          <a class="btn btn-primary" data-platform="mac"
+             href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-macOS.dmg">
+            <span>Download for macOS</span>
+            <small data-asset="AerControl-macOS.dmg">.dmg · macOS 14+</small>
+          </a>
+          <a class="btn btn-primary" data-platform="win-x64"
+             href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-x64.zip">
+            <span>Download for Windows</span>
+            <small data-asset="AerControl-windows-x64.zip">x64 .zip · Windows 10/11</small>
+          </a>
+          <a class="btn btn-ghost" data-platform="win-arm64"
+             href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-ARM64.zip">
+            <span>Download for Windows on Arm</span>
+            <small data-asset="AerControl-windows-ARM64.zip">ARM64 .zip · Windows 11</small>
+          </a>
+        </div>
+        <p class="meta">
+          <span data-version>Latest release</span> ·
+          <a href="#install">All downloads and setup</a> ·
+          Free, MIT licensed
+        </p>
+      </div>
+
+      <div class="hero-demo">
+        <canvas class="mist" aria-hidden="true"></canvas>
+        <button class="spray" type="button" aria-describedby="spray-hint">
+          <span class="spray-glyph" aria-hidden="true"></span>
+          <span class="spray-label">Spray</span>
+        </button>
+        <p id="spray-hint" class="demo-hint">Try it. This is the command AerControl sends.</p>
+        <ol class="wire" aria-live="polite" aria-label="Bluetooth messages">
+          <li class="wire-idle"><code>waiting for a spray…</code></li>
+        </ol>
+      </div>
+    </section>
+
+    <figure class="shots">
+      <img class="shot-main" src="screenshots/macos-spray.png" width="1440" height="1120"
+           alt="AerControl on macOS: the Spray tab with battery, refill level and a history of device-confirmed sprays">
+      <div class="shot-pair">
+        <img src="screenshots/macos-devices.png" width="1440" height="1120" loading="lazy"
+             alt="Devices tab: scan for nearby aer devices and remember one">
+        <img src="screenshots/macos-settings.png" width="1440" height="1120" loading="lazy"
+             alt="Settings tab: schedule, hotkey, idle disconnect and update options">
+      </div>
+      <figcaption>AerControl on macOS. The Windows app has the same tabs.</figcaption>
+    </figure>
+
+    <!-- Features, grouped by what they're for -->
+    <section id="features" class="features">
+      <h2>Everything the phone app does, plus the desktop</h2>
+
+      <div class="group">
+        <h3>Ways to spray</h3>
+        <dl>
+          <div><dt>The Spray button</dt><dd>One big button in the app. Every spray is logged with time, source and result.</dd></div>
+          <div><dt>Menu bar and tray</dt><dd>Lives in the macOS menu bar. On Windows, left-click the tray icon to spray.</dd></div>
+          <div><dt>Global hotkey</dt><dd><kbd>⌃</kbd><kbd>⌥</kbd><kbd>⌘</kbd><kbd>S</kbd> on macOS, <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Shift</kbd><kbd>S</kbd> on Windows. Works from any app.</dd></div>
+          <div><dt>Schedules</dt><dd>Spray every <em>N</em> minutes between two times of day, for example every 30 min from 09:00 to 18:00.</dd></div>
+          <div><dt>Widgets</dt><dd>Small and medium widgets with a Spray button: WidgetKit on macOS, the Widgets Board on Windows 11.</dd></div>
+          <div><dt>Shortcuts and jump lists</dt><dd><q>Spray Air Freshener</q> in Shortcuts, Siri and Spotlight. <q>Spray now</q> in the Windows jump list.</dd></div>
+          <div><dt>Command line</dt><dd><code>aerctl spray --count 3 --interval 5</code> for scripts and automations.</dd></div>
+        </dl>
+      </div>
+
+      <div class="group">
+        <h3>What it reads back</h3>
+        <dl>
+          <div><dt>Battery</dt><dd>Measured voltage and an estimated percentage. Warns below 2.8&nbsp;V, like the Godrej app.</dd></div>
+          <div><dt>Refill level</dt><dd>Percent and sprays left, counted against the can's 2,200 sprays. Reset the count when you insert a new can.</dd></div>
+          <div><dt>Confirmed sprays</dt><dd>The device acknowledges each spray, so a green check means it actually sprayed.</dd></div>
+        </dl>
+      </div>
+
+      <div class="group">
+        <h3>Stays out of the way</h3>
+        <dl>
+          <div><dt>Shares the device</dt><dd>Disconnects after 20 seconds idle, so the phone app can still connect.</dd></div>
+          <div><dt>Reconnects by itself</dt><dd>Remembers your device and reconnects when you spray. Can start at login.</dd></div>
+          <div><dt>Keeps itself current</dt><dd>Checks for a new release once a day. Windows installs updates on its own.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- Install guide -->
+    <section id="install" class="install">
+      <h2>Get started</h2>
+
+      <aside class="note">
+        <strong>Close the phone app first.</strong>
+        The aer accepts one Bluetooth connection at a time. If the Godrej app is connected,
+        AerControl can't reach the device.
+      </aside>
+
+      <div class="tabs" role="tablist" aria-label="Platform">
+        <button role="tab" id="tab-mac" aria-controls="panel-mac" data-tab="mac">macOS</button>
+        <button role="tab" id="tab-win" aria-controls="panel-win" data-tab="win">Windows</button>
+        <button role="tab" id="tab-cli" aria-controls="panel-cli" data-tab="cli">Command line</button>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-mac" aria-labelledby="tab-mac" data-panel="mac">
+        <div class="panel-head">
+          <h3>macOS</h3>
+          <p class="req">macOS 14 Sonoma or later · a Mac with Bluetooth</p>
+          <a class="btn btn-primary" href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-macOS.dmg">
+            <span>Download AerControl-macOS.dmg</span>
+            <small data-asset="AerControl-macOS.dmg">Disk image</small>
+          </a>
+        </div>
+        <ol class="steps">
+          <li>Open the disk image and drag <b>AerControl</b> into <b>Applications</b>.</li>
+          <li>
+            Open AerControl. If macOS says it can't check the app, open
+            <b>System Settings › Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>.
+            You only do this once.
+          </li>
+          <li>Click <b>Allow</b> when macOS asks for Bluetooth access.</li>
+          <li>Open the <b>Devices</b> tab, click <b>Scan</b> and choose <b>Smart Matic</b>. AerControl remembers it.</li>
+          <li>Click <b>Spray</b>. The history row turns green when the device confirms.</li>
+        </ol>
+        <div class="extra">
+          <h4>Add the widget</h4>
+          <p>Right-click the desktop › <b>Edit Widgets…</b>, search for <b>AerControl</b>, then drag <b>aer Spray</b> onto the desktop. Turn on <b>Launch at login</b> in Settings so the widget always has the app to talk to.</p>
+        </div>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-win" aria-labelledby="tab-win" data-panel="win">
+        <div class="panel-head">
+          <h3>Windows</h3>
+          <p class="req">Windows 10 (19041) or later · Windows 11 for widgets</p>
+          <div class="btn-row">
+            <a class="btn btn-primary" href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-x64.zip">
+              <span>Download for x64</span>
+              <small data-asset="AerControl-windows-x64.zip">Intel and AMD PCs</small>
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-windows-ARM64.zip">
+              <span>Download for ARM64</span>
+              <small data-asset="AerControl-windows-ARM64.zip">Snapdragon PCs</small>
+            </a>
+          </div>
+        </div>
+        <ol class="steps">
+          <li>Extract the zip to a folder.</li>
+          <li>
+            Right-click <code>install.ps1</code> › <b>Run with PowerShell</b>. Approve the one admin prompt:
+            it trusts AerControl's signing certificate, installs the Windows App Runtime and then AerControl.
+          </li>
+          <li>Start <b>AerControl</b> from the Start menu. It lives in the system tray.</li>
+          <li>Open <b>Devices</b>, click <b>Scan</b> and choose <b>Smart Matic</b>.</li>
+          <li>Click <b>Spray</b>, or left-click the tray icon.</li>
+        </ol>
+        <div class="extra">
+          <h4>Add the widget (Windows 11)</h4>
+          <p>Press <kbd>Win</kbd><kbd>W</kbd>, click <b>+</b>, choose <b>AerControl</b> › <b>aer Spray</b>. Updates install automatically through App Installer.</p>
+        </div>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-cli" aria-labelledby="tab-cli" data-panel="cli">
+        <div class="panel-head">
+          <h3>Command line</h3>
+          <p class="req"><code>aerctl</code> is a single binary. Put it anywhere on your <code>PATH</code>.</p>
+          <div class="btn-row">
+            <a class="btn btn-ghost" href="https://github.com/parthh37/aercontrol/releases/latest/download/aerctl-macOS.zip">
+              <span>macOS</span><small data-asset="aerctl-macOS.zip">.zip</small>
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/parthh37/aercontrol/releases/latest/download/aerctl-windows-x64.zip">
+              <span>Windows x64</span><small data-asset="aerctl-windows-x64.zip">.exe</small>
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/parthh37/aercontrol/releases/latest/download/aerctl-windows-ARM64.zip">
+              <span>Windows ARM64</span><small data-asset="aerctl-windows-ARM64.zip">.exe</small>
+            </a>
+          </div>
+        </div>
+<pre class="term"><code><span class="c"># find your device and remember it</span>
+aerctl scan
+aerctl remember &lt;UUID or address&gt;
+
+<span class="c"># spray, or spray three times five seconds apart</span>
+aerctl spray
+aerctl spray --count 3 --interval 5
+
+<span class="c"># battery, refill level, firmware</span>
+aerctl status
+<span class="o">battery:  2.51 V  (~13%, estimated)  LOW
+refill:   0%  (0 of 2200 left, 2832 sprays since reset)
+firmware: 3.0.6-T1</span>
+
+<span class="c"># after inserting a new can</span>
+aerctl refill-reset --yes</code></pre>
+      </div>
+    </section>
+
+    <section class="trouble">
+      <h2>If something's off</h2>
+      <details>
+        <summary>“Timed out during connect”</summary>
+        <p>The phone app is probably still connected. Close it, or turn off Bluetooth on the phone, then spray again.</p>
+      </details>
+      <details>
+        <summary>Nothing sprays, and there's no error</summary>
+        <p>Run <code>aerctl probe</code> and check the log. On macOS it's in <code>~/Library/Logs/AerControl/</code>; on Windows, in the app's <code>logs</code> folder.</p>
+      </details>
+      <details>
+        <summary>macOS says “No Bluetooth access”</summary>
+        <p>Open <b>System Settings › Privacy &amp; Security › Bluetooth</b> and turn on AerControl.</p>
+      </details>
+      <details>
+        <summary>The Windows widget is missing</summary>
+        <p>Widgets need Windows 11 and the app installed with <code>install.ps1</code>. A debug build run from Visual Studio doesn't register them.</p>
+      </details>
+      <p class="more">More in the <a href="https://github.com/parthh37/aercontrol#readme">README</a>, or <a href="https://github.com/parthh37/aercontrol/issues">open an issue</a>.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>AerControl is free and open source under the MIT license. Not affiliated with or endorsed by Godrej. It uses only the device's local Bluetooth protocol.</p>
+    <p><a href="https://github.com/parthh37/aercontrol">Source</a> · <a href="https://github.com/parthh37/aercontrol/releases">All releases</a> · <a href="https://github.com/parthh37/aercontrol/blob/main/protocol/README.md">Protocol notes</a></p>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
