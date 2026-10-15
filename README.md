@@ -26,7 +26,8 @@ Widgets Board on Windows 11).
 | CLI (`aerctl`) | [Windows x64](https://github.com/parthh37/aercontrol/releases/latest/download/aerctl-windows-x64.zip) · [macOS](https://github.com/parthh37/aercontrol/releases/latest/download/aerctl-macOS.zip) |
 
 All files, including the offline Windows zips, are on the [latest release](../../releases/latest) page.
-The apps check for updates daily.
+The apps check for updates daily. Step-by-step install guide:
+**[parthh37.github.io/aercontrol](https://parthh37.github.io/aercontrol/)**.
 
 | | macOS 14+ | Windows 10/11 |
 |---|---|---|
