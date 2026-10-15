@@ -1,0 +1,25 @@
+# macOS / Swift
+.DS_Store
+macos/.build/
+macos/.swiftpm/
+macos/build/
+macos/dist/
+macos/*.xcodeproj/
+xcuserdata/
+DerivedData/
+
+# .NET
+windows/**/bin/
+windows/**/obj/
+windows/**/AppPackages/
+windows/**/BundleArtifacts/
+windows/.vs/
+*.user
+TestResults/
+
+# Signing material: never commit
+*.pfx
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile

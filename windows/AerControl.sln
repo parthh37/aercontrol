@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{7A226149-6350-47BF-99BF-1F54ACAFB518}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AerControl.Protocol", "src\AerControl.Protocol\AerControl.Protocol.csproj", "{0C2796E8-0B16-4914-879A-1CD88A4C286F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AerControl.Core", "src\AerControl.Core\AerControl.Core.csproj", "{9156B9A9-D39E-43FF-B216-AAF248484C3A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AerControl.Ble.Windows", "src\AerControl.Ble.Windows\AerControl.Ble.Windows.csproj", "{D7EB01A0-CF74-4D70-B62E-27ED65C98846}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AerControl.Cli", "src\AerControl.Cli\AerControl.Cli.csproj", "{AC1168FF-CF57-417C-AF9C-1D5DF4F8583B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{4C0B960D-9F9E-4A39-A385-D49A5843FE5E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AerControl.Tests", "tests\AerControl.Tests\AerControl.Tests.csproj", "{A28D42C3-59FD-43E2-84AE-43CB1547D84D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0C2796E8-0B16-4914-879A-1CD88A4C286F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C2796E8-0B16-4914-879A-1CD88A4C286F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C2796E8-0B16-4914-879A-1CD88A4C286F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C2796E8-0B16-4914-879A-1CD88A4C286F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9156B9A9-D39E-43FF-B216-AAF248484C3A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9156B9A9-D39E-43FF-B216-AAF248484C3A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9156B9A9-D39E-43FF-B216-AAF248484C3A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9156B9A9-D39E-43FF-B216-AAF248484C3A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D7EB01A0-CF74-4D70-B62E-27ED65C98846}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D7EB01A0-CF74-4D70-B62E-27ED65C98846}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D7EB01A0-CF74-4D70-B62E-27ED65C98846}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D7EB01A0-CF74-4D70-B62E-27ED65C98846}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AC1168FF-CF57-417C-AF9C-1D5DF4F8583B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC1168FF-CF57-417C-AF9C-1D5DF4F8583B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC1168FF-CF57-417C-AF9C-1D5DF4F8583B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC1168FF-CF57-417C-AF9C-1D5DF4F8583B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A28D42C3-59FD-43E2-84AE-43CB1547D84D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A28D42C3-59FD-43E2-84AE-43CB1547D84D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A28D42C3-59FD-43E2-84AE-43CB1547D84D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A28D42C3-59FD-43E2-84AE-43CB1547D84D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{0C2796E8-0B16-4914-879A-1CD88A4C286F} = {7A226149-6350-47BF-99BF-1F54ACAFB518}
+		{9156B9A9-D39E-43FF-B216-AAF248484C3A} = {7A226149-6350-47BF-99BF-1F54ACAFB518}
+		{D7EB01A0-CF74-4D70-B62E-27ED65C98846} = {7A226149-6350-47BF-99BF-1F54ACAFB518}
+		{AC1168FF-CF57-417C-AF9C-1D5DF4F8583B} = {7A226149-6350-47BF-99BF-1F54ACAFB518}
+		{A28D42C3-59FD-43E2-84AE-43CB1547D84D} = {4C0B960D-9F9E-4A39-A385-D49A5843FE5E}
+	EndGlobalSection
+EndGlobal

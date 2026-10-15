@@ -1,0 +1,16 @@
+{
+  "description": "Spray payload test vectors for the Godrej aer Smart Matic. Payload is an indefinite-length CBOR map with keys in the fixed order mT, mN, rI.",
+  "service_uuid": "6E400000-B5A3-F393-E0A9-E50E24DCCA9E",
+  "characteristic_uuid": "6E400003-B5A3-F393-E0A9-E50E24DCCA9E",
+  "vectors": [
+    { "name": "captured default spray", "mT": 104, "mN": 154, "rI": 0, "hex": "bf626d541868626d4e189a62724900ff" },
+    { "name": "mN zero (inline uint)", "mT": 104, "mN": 0, "rI": 0, "hex": "bf626d541868626d4e0062724900ff" },
+    { "name": "mN 23 (largest inline uint)", "mT": 104, "mN": 23, "rI": 0, "hex": "bf626d541868626d4e1762724900ff" },
+    { "name": "mN 24 (smallest 1-byte uint)", "mT": 104, "mN": 24, "rI": 0, "hex": "bf626d541868626d4e181862724900ff" },
+    { "name": "mN 155 (auto-increment after capture)", "mT": 104, "mN": 155, "rI": 0, "hex": "bf626d541868626d4e189b62724900ff" },
+    { "name": "mN 255 (largest 1-byte uint)", "mT": 104, "mN": 255, "rI": 0, "hex": "bf626d541868626d4e18ff62724900ff" },
+    { "name": "mN 256 (2-byte uint)", "mT": 104, "mN": 256, "rI": 0, "hex": "bf626d541868626d4e19010062724900ff" },
+    { "name": "mN 65536 (4-byte uint)", "mT": 104, "mN": 65536, "rI": 0, "hex": "bf626d541868626d4e1a0001000062724900ff" },
+    { "name": "rI 1", "mT": 104, "mN": 154, "rI": 1, "hex": "bf626d541868626d4e189a62724901ff" }
+  ]
+}
