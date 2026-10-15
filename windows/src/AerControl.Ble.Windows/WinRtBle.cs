@@ -27,6 +27,7 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
     private GattCharacteristic? _characteristic;
     private GattCharacteristic? _response;
     private volatile bool _connected;
+    private readonly object _release = new();
 
     public bool IsConnected => _connected && _device?.ConnectionStatus == BluetoothConnectionStatus.Connected;
 
@@ -60,8 +61,24 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         else log.Info($"response characteristic properties: {_response.CharacteristicProperties}");
         foreach (var c in new[] { _characteristic, _response })
             if (c is not null) await EnableNotificationsAsync(c, ct).ConfigureAwait(false);
+        // Service and characteristic lookups can be answered from Windows' GATT cache while
+        // the aer is busy with another computer or the phone. Only report ready once the radio
+        // link is really up, so the session can wait and retry instead of failing the write.
+        if (!await WaitForLinkAsync(_device, ct).ConfigureAwait(false))
+            throw new BleException(BleErrorKind.Unreachable);
         log.Info($"ATT MTU {_session.MaxPduSize}");
         _connected = true;
+    }
+
+    private static async Task<bool> WaitForLinkAsync(BluetoothLEDevice device, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (device.ConnectionStatus != BluetoothConnectionStatus.Connected)
+        {
+            if (DateTime.UtcNow >= deadline) return false;
+            await Task.Delay(100, ct).ConfigureAwait(false);
+        }
+        return true;
     }
 
     private static readonly BluetoothCacheMode[] CacheModes = [BluetoothCacheMode.Uncached, BluetoothCacheMode.Cached];
@@ -235,35 +252,49 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
 
     public Task DisconnectAsync()
     {
-        // WinRT has no explicit "disconnect". The link closes once every GATT object and
-        // the device are disposed and MaintainConnection is off.
         _connected = false;
-        if (_characteristic is not null) _characteristic.ValueChanged -= OnValueChanged;
-        if (_response is not null) _response.ValueChanged -= OnValueChanged;
-        if (_device is not null) _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
-        if (_session is not null)
-        {
-            _session.MaxPduSizeChanged -= OnMaxPduSizeChanged;
-            _session.MaintainConnection = false;
-            _session.Dispose();
-        }
-        _service?.Dispose();
-        _device?.Dispose();
-        _characteristic = null;
-        _response = null;
-        _service = null;
-        _session = null;
-        _device = null;
+        Release(only: null);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// WinRT has no explicit "disconnect". The link closes once every GATT object and the
+    /// device are disposed and MaintainConnection is off. <paramref name="only"/> limits the
+    /// release to that device, so a late drop event can't tear down a newer connection.
+    /// </summary>
+    private void Release(BluetoothLEDevice? only)
+    {
+        lock (_release)
+        {
+            if (only is not null && !ReferenceEquals(only, _device)) return;
+            if (_characteristic is not null) _characteristic.ValueChanged -= OnValueChanged;
+            if (_response is not null) _response.ValueChanged -= OnValueChanged;
+            if (_device is not null) _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
+            if (_session is not null)
+            {
+                _session.MaxPduSizeChanged -= OnMaxPduSizeChanged;
+                _session.MaintainConnection = false;
+                _session.Dispose();
+            }
+            _service?.Dispose();
+            _device?.Dispose();
+            _characteristic = null;
+            _response = null;
+            _service = null;
+            _session = null;
+            _device = null;
+        }
     }
 
     private void OnConnectionStatusChanged(BluetoothLEDevice sender, object args)
     {
-        if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected && _connected)
-        {
-            _connected = false;
-            ConnectionLost?.Invoke(this, "link dropped");
-        }
+        if (sender.ConnectionStatus != BluetoothConnectionStatus.Disconnected || !_connected) return;
+        _connected = false;
+        // Left alive, the GattSession's MaintainConnection makes Windows reconnect on its own
+        // and hold the aer indefinitely while this app shows "disconnected", which locks other
+        // computers and the phone out. Release everything (off this WinRT callback).
+        _ = Task.Run(() => Release(only: sender));
+        ConnectionLost?.Invoke(this, "link dropped");
     }
 
     private void OnMaxPduSizeChanged(GattSession sender, object args) => log.Info($"ATT MTU now {sender.MaxPduSize}");

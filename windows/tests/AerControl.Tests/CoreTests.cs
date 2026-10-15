@@ -41,7 +41,25 @@ public class CoreTests
     {
         var path = Path.Combine(Path.GetTempPath(), $"aer-{Guid.NewGuid()}.json");
         File.WriteAllText(path, "{ not json");
-        Assert.Equal(20, new JsonFileStore<AerSettings>(path).Load().IdleDisconnectSeconds);
+        Assert.Equal(AerSettings.DefaultIdleDisconnectSeconds, new JsonFileStore<AerSettings>(path).Load().IdleDisconnectSeconds);
+        File.Delete(path);
+    }
+
+    [Theory]
+    [InlineData("""{ "IdleDisconnectSeconds": 20 }""", 3)]                // old default: shortened
+    [InlineData("""{ "IdleDisconnectSeconds": 45 }""", 45)]               // user's choice: kept
+    [InlineData("""{ "IdleDisconnectSeconds": 0 }""", 0)]                 // stay connected: kept
+    [InlineData("""{ "IdleDisconnectSeconds": 20, "Version": 2 }""", 20)] // chosen after the change
+    public void SettingsMigrateOldIdleDefault(string json, int expected)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"aer-{Guid.NewGuid()}.json");
+        File.WriteAllText(path, json);
+        var store = new JsonFileStore<AerSettings>(path);
+        var s = store.Load();
+        Assert.Equal(expected, s.IdleDisconnectSeconds);
+        Assert.Equal(AerSettings.CurrentVersion, s.Version);
+        store.Save(s);
+        Assert.Equal(expected, store.Load().IdleDisconnectSeconds);
         File.Delete(path);
     }
 

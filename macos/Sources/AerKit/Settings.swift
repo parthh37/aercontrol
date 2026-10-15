@@ -44,8 +44,10 @@ public struct AerSettings: Codable, Equatable, Sendable {
     /// and does not include the service UUID in its advertisement.
     public static let defaultNameFilter = "aer, Smart Matic"
     public var nameFilter = AerSettings.defaultNameFilter
-    /// 0 = stay connected. Otherwise disconnect so the phone app can connect.
-    public var idleDisconnectSeconds = 20
+    /// Seconds to hold the link after the last command; 0 = stay connected. The aer accepts
+    /// one connection at a time and stops advertising while connected, so a short hold is
+    /// what lets another computer (or the phone app) spray right after this one.
+    public var idleDisconnectSeconds = 3
     public var autoReconnect = true
     public var writeMode: WriteMode = .automatic
     /// On by default as a safeguard. Live tests showed a reused mN is accepted; the real fix
@@ -55,6 +57,9 @@ public struct AerSettings: Codable, Equatable, Sendable {
     public var schedule = SpraySchedule()
     public var hotkeyEnabled = false
     public var checkForUpdates = true
+    /// Bumped when a changed default should reach settings saved by an older version.
+    public static let currentVersion = 2
+    public var version = AerSettings.currentVersion
 
     public init() {}
 
@@ -74,6 +79,11 @@ public struct AerSettings: Codable, Equatable, Sendable {
         schedule = (try? c.decodeIfPresent(SpraySchedule.self, forKey: .schedule)) ?? d.schedule
         hotkeyEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotkeyEnabled) ?? d.hotkeyEnabled
         checkForUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkForUpdates) ?? d.checkForUpdates
+        // v1 saved the old 20 s default, which locked other computers out after every spray.
+        // A value the user picked themselves is kept.
+        let saved = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        if saved < 2, idleDisconnectSeconds == 20 { idleDisconnectSeconds = d.idleDisconnectSeconds }
+        version = Self.currentVersion
     }
 }
 

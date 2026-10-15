@@ -49,8 +49,9 @@ The apps check for updates daily. Step-by-step install guide:
 ## Before you start
 
 **The aer accepts one Bluetooth connection at a time.** Close or disconnect the Godrej
-phone app before you use AerControl. AerControl disconnects after 20 s idle by default
-(*Settings › Disconnect when idle*), so the phone app can connect again.
+phone app before you use AerControl. AerControl disconnects 3 s after each command by default
+(*Settings › Disconnect when idle*), so the phone app or AerControl on another computer can
+connect right after it. If the aer is busy, AerControl waits up to 30 s for it to free up.
 
 ## macOS
 

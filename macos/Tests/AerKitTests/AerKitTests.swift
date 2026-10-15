@@ -24,6 +24,20 @@ import Testing
         store.save(s)
         #expect(store.load() == s)
     }
+
+    @Test(arguments: [
+        (#"{"idleDisconnectSeconds":20}"#, 3),               // old default: shortened
+        (#"{"idleDisconnectSeconds":45}"#, 45),              // user's choice: kept
+        (#"{"idleDisconnectSeconds":0}"#, 0),                // stay connected: kept
+        (#"{"idleDisconnectSeconds":20,"version":2}"#, 20),  // chosen after the change
+    ])
+    func migratesOldIdleDefault(json: String, expected: Int) throws {
+        let s = try JSONDecoder().decode(AerSettings.self, from: Data(json.utf8))
+        #expect(s.idleDisconnectSeconds == expected)
+        #expect(s.version == AerSettings.currentVersion)
+        let again = try JSONDecoder().decode(AerSettings.self, from: JSONEncoder().encode(s))
+        #expect(again.idleDisconnectSeconds == expected)
+    }
 }
 
 @Suite struct ScheduleTests {

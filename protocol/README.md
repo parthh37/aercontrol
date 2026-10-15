@@ -60,7 +60,9 @@ Field notes from the first live test (2026-10-15, macOS):
 
 The device accepts **one BLE central at a time**. While the phone app is connected, the
 desktop clients can't connect (and the reverse). That's why both clients disconnect after
-a configurable idle period (`idleDisconnectSeconds`, default 20 s; `0` = stay connected).
+a configurable idle period (`idleDisconnectSeconds`, default 3 s; `0` = stay connected;
+settings saved with the old 20 s default are migrated to 3 s), and wait up to 30 s for a
+busy device to free up when connecting.
 
 ## Messages
 

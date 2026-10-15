@@ -107,8 +107,9 @@ public sealed class BleException(BleErrorKind kind, string? detail = null) : Exc
         BleErrorKind.Unsupported => "No Bluetooth LE adapter found.",
         BleErrorKind.NoDeviceSelected => "No device selected. Scan and pick your aer first.",
         BleErrorKind.DeviceNotFound => "Device not found. Is it in range and powered?",
-        BleErrorKind.Unreachable => "Device unreachable. Is the phone app still connected? The device allows only one connection.",
-        BleErrorKind.Timeout => $"Timed out during {detail ?? "operation"}. Is the phone app still connected?",
+        BleErrorKind.Unreachable => "Device unreachable. The aer accepts one connection at a time: is the phone app " +
+                                    "or another computer connected to it?",
+        BleErrorKind.Timeout => $"Timed out during {detail ?? "operation"}. Is the phone app or another computer connected to the aer?",
         BleErrorKind.ServiceNotFound => "The aer GATT service wasn't found on this device. Close the phone app " +
                                         "(the device allows one connection) and try again. If you paired it in " +
                                         "Windows Bluetooth settings, remove it there: AerControl doesn't need pairing.",

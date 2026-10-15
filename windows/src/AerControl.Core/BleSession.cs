@@ -67,7 +67,7 @@ public sealed class BleSession : IDisposable
     public event EventHandler<byte[]>? NotificationReceived;
 
     public ulong? TargetAddress { get; private set; }
-    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromSeconds(20);
+    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromSeconds(AerSettings.DefaultIdleDisconnectSeconds);
     public bool AutoReconnect { get; set; } = true;
     public WriteMode WriteMode { get; set; } = WriteMode.Automatic;
     /// <summary>Listen window after a write. Also keeps a write-without-response from being
@@ -76,7 +76,12 @@ public sealed class BleSession : IDisposable
     /// <summary>How long to wait when the caller names the reply it expects (status, refill).
     /// The wait ends as soon as that reply arrives, so a long limit only costs time on failure.</summary>
     public TimeSpan ExpectedReplyTimeout { get; set; } = TimeSpan.FromSeconds(4);
-    public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(15);
+    /// <summary>Total time to keep trying to connect. While another computer or the phone holds
+    /// the aer it doesn't advertise and Windows reports it unreachable, so connecting is retried
+    /// until that host lets go (a few seconds with this app's default hold).</summary>
+    public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
+    /// <summary>Pause between connect attempts while the device is busy or out of reach.</summary>
+    public TimeSpan BusyRetryDelay { get; set; } = TimeSpan.FromSeconds(1);
     /// <summary>Base delay for reconnect backoff (doubles per attempt, capped at 60 s).</summary>
     public TimeSpan ReconnectBaseDelay { get; set; } = TimeSpan.FromSeconds(1);
 
@@ -130,8 +135,14 @@ public sealed class BleSession : IDisposable
     public async Task ConnectAsync(CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try { await EnsureConnectedAsync(ct).ConfigureAwait(false); }
-        finally { Touch(); _gate.Release(); }
+        try
+        {
+            await EnsureConnectedAsync(ct).ConfigureAwait(false);
+            // Only a successful connect counts as activity. Counting failures kept auto-reconnect
+            // inside its "in use" window forever, so it kept grabbing the aer from other hosts.
+            Touch();
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task<IReadOnlyList<string>> InspectAsync(CancellationToken ct = default)
@@ -158,26 +169,51 @@ public sealed class BleSession : IDisposable
         _log.Info($"connecting to {BluetoothAddress.Format(address)}");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(ConnectTimeout);
-        try
+        for (int attempt = 1; ; attempt++)
         {
-            await _link.ConnectAsync(address, timeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            await SafeDisconnectLinkAsync().ConfigureAwait(false);
-            RefreshStatus();
-            throw new BleException(BleErrorKind.Timeout, "connect");
-        }
-        catch
-        {
-            await SafeDisconnectLinkAsync().ConfigureAwait(false);
-            RefreshStatus();
-            throw;
+            try
+            {
+                await _link.ConnectAsync(address, timeout.Token).ConfigureAwait(false);
+                break;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                await SafeDisconnectLinkAsync().ConfigureAwait(false);
+                RefreshStatus();
+                throw new BleException(BleErrorKind.Timeout, "connect");
+            }
+            catch (BleException ex) when (IsBusy(ex.Kind))
+            {
+                await SafeDisconnectLinkAsync().ConfigureAwait(false);
+                if (!await PauseAsync(BusyRetryDelay, timeout.Token).ConfigureAwait(false))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    RefreshStatus();
+                    throw; // out of time: report what the device last said
+                }
+                _log.Info($"connect attempt {attempt}: {ex.Kind}; the aer may be in use by another host, retrying");
+            }
+            catch
+            {
+                await SafeDisconnectLinkAsync().ConfigureAwait(false);
+                RefreshStatus();
+                throw;
+            }
         }
         _reconnectAttempt = 0;
         _log.Info("connected and ready");
         SetStatus(LinkStatus.Connected);
     }
+
+    private static async Task<bool> PauseAsync(TimeSpan delay, CancellationToken ct)
+    {
+        try { await Task.Delay(delay, ct).ConfigureAwait(false); return true; }
+        catch (OperationCanceledException) { return false; }
+    }
+
+    /// <summary>Errors Windows gives while another host holds the aer (it stops advertising).</summary>
+    private static bool IsBusy(BleErrorKind kind) =>
+        kind is BleErrorKind.Unreachable or BleErrorKind.ServiceNotFound or BleErrorKind.DeviceNotFound;
 
     // ---- Disconnect / idle / reconnect -------------------------------------------------
 

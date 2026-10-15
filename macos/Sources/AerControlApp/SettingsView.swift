@@ -13,14 +13,14 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Connection") {
-                Stepper(value: $controller.settings.idleDisconnectSeconds, in: 0...3600, step: 5) {
+                Stepper(value: $controller.settings.idleDisconnectSeconds, in: 0...3600, step: 1) {
                     LabeledContent("Disconnect when idle") {
                         Text(controller.settings.idleDisconnectSeconds == 0
                              ? "Never (stay connected)"
                              : "after \(controller.settings.idleDisconnectSeconds) s")
                     }
                 }
-                Text("The aer accepts one connection at a time. Disconnecting when idle lets the phone app connect.")
+                Text("The aer accepts one connection at a time. A short hold (a few seconds) lets your other computers and the phone app spray right after this one.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Auto-reconnect if the link drops while in use", isOn: $controller.settings.autoReconnect)
                 Picker("Write type", selection: $controller.settings.writeMode) {
