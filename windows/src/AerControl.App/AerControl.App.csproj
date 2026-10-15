@@ -34,7 +34,7 @@
   <ItemGroup>
     <Content Include="Assets\**\*.png" />
     <Content Include="Assets\AerControl.ico" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Widgets\Templates\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Public\README.txt" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 

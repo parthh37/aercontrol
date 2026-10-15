@@ -132,9 +132,13 @@ final class BackgroundServices: ObservableObject {
         model.log.info("open url \(url.absoluteString)")
         switch url.host {
         case "spray":
-            // A widget tap that fell back to the URL carries a pending request.
-            if AerShared.takePendingRequest().map({ AerShared.acknowledge($0); return true }) == true {
-                model.spray(.widget)
+            let requestID = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "request" }?.value.flatMap(UUID.init)
+            if let requestID {
+                // Widget fallback: spray only if this exact tap hasn't been handled already
+                // (start() may have picked the pending request up at launch).
+                guard !AerShared.isAcknowledged(id: requestID) else { return }
+                handlePendingWidgetRequest()
             } else {
                 model.spray(.url)
             }

@@ -41,7 +41,51 @@
         <uap5:Extension Category="windows.startupTask">
           <uap5:StartupTask TaskId="AerControlStartup" Enabled="false" DisplayName="AerControl" />
         </uap5:Extension>
-        <!--WIDGET-EXTENSIONS-->
+        <!-- Windows 11 Widgets Board: COM server activation for the provider class. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="AerControl.exe" Arguments="-RegisterProcessAsComServer" DisplayName="AerControl Widget Provider">
+              <com:Class Id="860110C8-B6B9-4D78-A0F2-EDE571EB78C7" DisplayName="AerControl Widget Provider" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <uap3:Extension Category="windows.appExtension">
+          <uap3:AppExtension Name="com.microsoft.windows.widgets" DisplayName="AerControl" Id="AerControlWidgets" PublicFolder="Public">
+            <uap3:Properties>
+              <WidgetProvider>
+                <ProviderIcons>
+                  <Icon Path="Assets\Widget\Icon.png" />
+                </ProviderIcons>
+                <Activation>
+                  <CreateInstance ClassId="860110C8-B6B9-4D78-A0F2-EDE571EB78C7" />
+                </Activation>
+                <Definitions>
+                  <Definition Id="AerSpray" DisplayName="aer Spray" Description="Spray your Godrej aer Smart Matic and see its status." AllowMultiple="false" IsCustomizable="false">
+                    <Capabilities>
+                      <Capability>
+                        <Size Name="small" />
+                      </Capability>
+                      <Capability>
+                        <Size Name="medium" />
+                      </Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons>
+                        <Icon Path="Assets\Widget\Icon.png" />
+                      </Icons>
+                      <Screenshots>
+                        <Screenshot Path="Assets\Widget\Screenshot.png" DisplayAltText="aer Spray widget" />
+                      </Screenshots>
+                      <DarkMode />
+                      <LightMode />
+                    </ThemeResources>
+                  </Definition>
+                </Definitions>
+              </WidgetProvider>
+            </uap3:Properties>
+          </uap3:AppExtension>
+        </uap3:Extension>
       </Extensions>
     </Application>
   </Applications>

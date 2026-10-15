@@ -163,6 +163,16 @@ public extension AerShared {
     }
 
     static func isAcknowledged(_ request: SprayRequest) -> Bool {
-        defaults.string(forKey: Key.ackedRequestID) == request.id.uuidString
+        isAcknowledged(id: request.id)
+    }
+
+    static func isAcknowledged(id: UUID) -> Bool {
+        defaults.string(forKey: Key.ackedRequestID) == id.uuidString
+    }
+
+    /// Widget fallback URL. Carries the request id so a launch-time pickup and the URL
+    /// handler can't both spray for the same tap.
+    static func sprayURL(for request: SprayRequest) -> URL {
+        URL(string: "aercontrol://spray?request=\(request.id.uuidString)")!
     }
 }

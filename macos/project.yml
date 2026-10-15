@@ -1,0 +1,79 @@
+# XcodeGen spec for the signed app + widget extension.
+#   brew install xcodegen && xcodegen generate   →  AerControl.xcodeproj
+# Set your team once:  export DEVELOPMENT_TEAM=ABCDE12345  (or edit in Xcode afterwards)
+name: AerControl
+options:
+  bundleIdPrefix: com.aercontrol
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  AerControlKit:
+    path: .
+
+targets:
+  AerControl:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/AerControlApp
+      - path: App/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_NAME: AerControl
+        PRODUCT_BUNDLE_IDENTIFIER: com.aercontrol.app
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/AerControl.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+    dependencies:
+      - package: AerControlKit
+        product: AerKit
+      - target: AerControlWidget
+        embed: true
+        codeSign: true
+
+  AerControlWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widget
+    settings:
+      base:
+        PRODUCT_NAME: AerControlWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.aercontrol.app.widget
+        INFOPLIST_FILE: Widget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Widget/AerControlWidget.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
+    dependencies:
+      - package: AerControlKit
+        product: AerShared
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+
+schemes:
+  AerControl:
+    build:
+      targets:
+        AerControl: all
+        AerControlWidget: all
+    run:
+      config: Debug
+    archive:
+      config: Release

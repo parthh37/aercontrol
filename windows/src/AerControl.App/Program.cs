@@ -22,12 +22,16 @@ public static class Program
         if (RedirectToExistingInstance())
             return 0;
 
+        // Before the UI starts, so a Widgets Board activation is served by this process.
+        Widgets.WidgetComServer.Register();
+
         Application.Start(_ =>
         {
             var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
             SynchronizationContext.SetSynchronizationContext(context);
             _ = new App();
         });
+        Widgets.WidgetComServer.Revoke();
         return 0;
     }
 
