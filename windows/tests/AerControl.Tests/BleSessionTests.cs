@@ -11,6 +11,8 @@ internal sealed class FakeLink : IBleLink
     public Exception? ConnectError;
     public bool HangOnConnect;
     public byte[]? AutoReply;
+    /// <summary>Sent one notification at a time after each write (stray packets, MTU-sized chunks).</summary>
+    public List<byte[]>? AutoNotifications;
     public int ConcurrentWrites, MaxConcurrentWrites;
     public event EventHandler<string?>? ConnectionLost;
     public event EventHandler<byte[]>? NotificationReceived;
@@ -31,6 +33,15 @@ internal sealed class FakeLink : IBleLink
         lock (Writes) Writes.Add(data);
         Interlocked.Decrement(ref ConcurrentWrites);
         if (AutoReply is not null) NotificationReceived?.Invoke(this, AutoReply);
+        if (AutoNotifications is not null)
+            _ = Task.Run(async () =>
+            {
+                foreach (var n in AutoNotifications)
+                {
+                    await Task.Delay(5);
+                    NotificationReceived?.Invoke(this, n);
+                }
+            });
         return mode == WriteMode.WithResponse ? "with-response" : "without-response";
     }
 
@@ -58,6 +69,7 @@ public class BleSessionTests
         var s = new BleSession(link, radio, Log)
         {
             ReplyWindow = TimeSpan.FromMilliseconds(50),
+            ExpectedReplyTimeout = TimeSpan.FromMilliseconds(500),
             IdleTimeout = TimeSpan.Zero,
             ReconnectBaseDelay = TimeSpan.FromMilliseconds(10),
         };
@@ -103,6 +115,50 @@ public class BleSessionTests
         link.AutoReply = [0xA1, 0x01];
         var outcome = await s.SendAsync([1]);
         Assert.Equal(new byte[] { 0xA1, 0x01 }, outcome.Reply);
+    }
+
+    /// <summary>Fetch-status reply captured from the real device (protocol/test-vectors.json), 105 bytes.</summary>
+    private static readonly byte[] StatusReply = Convert.FromHexString(
+        "bf626d54189d626d4e18a06361636b18c86262561a000009ca62665668332e302e362d54316263531885627343a362736e84190041" +
+        "1900001900001900416273638319091a19010719000062626e8319001119005819000462735666313031313130ff");
+
+    private static List<byte[]> Chunk(byte[] data, int size) => data.Chunk(size).ToList();
+
+    [Fact]
+    public async Task ReassemblesReplySplitAcrossMtuSizedNotifications()
+    {
+        var (s, link, _) = Make();
+        link.AutoNotifications = Chunk(StatusReply, 20); // default ATT MTU 23 → 20-byte payloads
+        var outcome = await s.SendAsync(AerCommands.FetchStatus(160), AerMessageType.FetchStatus.ResponseType());
+        Assert.Equal(StatusReply, outcome.Reply);
+        Assert.Equal(2506, DeviceStatusReport.Parse(outcome.Reply)!.BatteryMillivolts);
+    }
+
+    [Fact]
+    public async Task SkipsUnrelatedNotificationBeforeExpectedReply()
+    {
+        var (s, link, _) = Make();
+        var sprayAck = Convert.FromHexString("bf626d54189a626d4e18a06361636b18c8ff"); // {mT:154, mN:160, ack:200}
+        link.AutoNotifications = [sprayAck, [0x00, 0x01], .. Chunk(StatusReply, 64)];
+        var outcome = await s.SendAsync(AerCommands.FetchStatus(160), AerMessageType.FetchStatus.ResponseType());
+        Assert.Equal(StatusReply, outcome.Reply);
+    }
+
+    [Fact]
+    public async Task ExpectedReplyWaitsPastTheSettleWindow()
+    {
+        var (s, link, _) = Make(); // ReplyWindow 50 ms, ExpectedReplyTimeout 500 ms
+        link.AutoNotifications = [.. Enumerable.Repeat(new byte[] { 0x00 }, 20), StatusReply]; // ~105 ms of noise first
+        var outcome = await s.SendAsync(AerCommands.FetchStatus(160), AerMessageType.FetchStatus.ResponseType());
+        Assert.Equal(StatusReply, outcome.Reply);
+    }
+
+    [Fact]
+    public void AssemblerIgnoresATruncatedReply()
+    {
+        Assert.Null(ReplyCollector.TryAssemble([StatusReply[..40]], 157));
+        Assert.Null(ReplyCollector.TryAssemble([StatusReply], 154));
+        Assert.Equal(StatusReply, ReplyCollector.TryAssemble(Chunk(StatusReply, 20), 157));
     }
 
     [Fact]

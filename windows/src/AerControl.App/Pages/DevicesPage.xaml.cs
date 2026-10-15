@@ -101,7 +101,10 @@ public sealed partial class DevicesPage : Page
     {
         if (sender is not Button { Tag: ulong address }) return;
         var device = AppServices.Scan.Devices.FirstOrDefault(d => d.Address == address);
-        if (device is not null) await AppServices.Controller.SelectDeviceAsync(device);
+        if (device is null) return;
+        await AppServices.Controller.SelectDeviceAsync(device);
+        // Any cached reading belongs to the previous device; read the new one right away.
+        AppServices.Controller.RefreshDeviceStatusIfOlder(TimeSpan.Zero);
     }
 
     private async void OnForgetClick(object sender, RoutedEventArgs e) => await AppServices.Controller.ForgetDeviceAsync();
