@@ -3,9 +3,17 @@ import AerKit
 
 @main
 struct AerControlApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel.shared
 
     var body: some Scene {
+        MenuBarExtra {
+            MenuBarView(model: model)
+        } label: {
+            Image(systemName: model.controller.isSpraying ? "aqi.high" : "aqi.medium")
+        }
+        .menuBarExtraStyle(.window)
+
         Window("AerControl", id: "main") {
             MainView(model: model)
                 .frame(minWidth: 620, minHeight: 480)
@@ -37,10 +45,4 @@ struct MainView: View {
             if model.controller.settings.deviceIdentifier == nil { tab = .devices }
         }
     }
-}
-
-/// Phase 3 adds schedule, hotkey and launch-at-login sections here.
-struct ExtraSettingsSections: View {
-    @ObservedObject var model: AppModel
-    var body: some View { EmptyView() }
 }

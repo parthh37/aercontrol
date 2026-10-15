@@ -16,6 +16,10 @@ final class AppModel: ObservableObject {
     /// Last spray result, shown briefly as feedback on buttons.
     @Published private(set) var flash: SprayRecord?
 
+    private(set) lazy var services = BackgroundServices(model: self)
+    /// Set by a SwiftUI view that has access to `openWindow`.
+    var showMainWindow: (() -> Void)?
+
     private var cancellables: Set<AnyCancellable> = []
     private var flashTask: Task<Void, Never>?
 
@@ -91,6 +95,7 @@ extension SprayTrigger {
         case .schedule: "clock"
         case .hotkey: "keyboard"
         case .cli: "terminal"
+        case .shortcut: "square.stack.3d.up"
         }
     }
 }

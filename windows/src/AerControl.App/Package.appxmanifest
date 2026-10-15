@@ -37,7 +37,11 @@
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>
-        <!--EXTENSIONS-->
+        <!-- Launch at login (toggled in Settings; starts hidden in the tray). -->
+        <uap5:Extension Category="windows.startupTask">
+          <uap5:StartupTask TaskId="AerControlStartup" Enabled="false" DisplayName="AerControl" />
+        </uap5:Extension>
+        <!--WIDGET-EXTENSIONS-->
       </Extensions>
     </Application>
   </Applications>

@@ -9,6 +9,9 @@ public partial class App : Application
 {
     public static MainWindow? Window { get; private set; }
     public static DispatcherQueue UI { get; private set; } = null!;
+    public static TrayIcon? Tray { get; private set; }
+    public static GlobalHotKey? HotKey { get; private set; }
+    private static SprayScheduler? _scheduler;
 
     public App()
     {
@@ -25,10 +28,41 @@ public partial class App : Application
         UI = DispatcherQueue.GetForCurrentThread();
         await AppServices.EnsureInitializedAsync();
 
-        Window = new MainWindow();
-        if (!StartsInBackground(AppInstance.GetCurrent().GetActivatedEventArgs()))
+        Window = new MainWindow { HideOnClose = true };
+        Tray = new TrayIcon();
+        _scheduler = new SprayScheduler(UI);
+        ApplyHotKey();
+        _ = JumpListActions.InstallAsync();
+
+        var launchArgs = (args.Arguments ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        bool handled = HandleCommandLine(launchArgs.Concat(Environment.GetCommandLineArgs()));
+        if (!handled && !StartsInBackground(AppInstance.GetCurrent().GetActivatedEventArgs()))
             Window.Activate();
-        HandleCommandLine(Environment.GetCommandLineArgs());
+    }
+
+    /// <summary>Registers or releases the global hotkey to match settings.</summary>
+    public static void ApplyHotKey()
+    {
+        bool wanted = AppServices.Controller.Settings.HotkeyEnabled;
+        if (wanted && HotKey is null && Window is not null)
+        {
+            HotKey = new GlobalHotKey(Window, () => _ = AppServices.Controller.SprayAsync(SprayTrigger.Hotkey));
+            AppServices.Log.Info(HotKey.IsRegistered ? $"hotkey {GlobalHotKey.Display} registered" : "hotkey registration failed");
+        }
+        else if (!wanted && HotKey is not null)
+        {
+            HotKey.Dispose();
+            HotKey = null;
+        }
+    }
+
+    public static void Quit()
+    {
+        HotKey?.Dispose();
+        Tray?.Dispose();
+        _ = AppServices.Controller.Session.DisconnectAsync("quit");
+        if (Window is not null) Window.HideOnClose = false;
+        Current.Exit();
     }
 
     /// <summary>

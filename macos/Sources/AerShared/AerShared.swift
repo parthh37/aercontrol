@@ -47,7 +47,7 @@ public enum LinkStatus: String, Codable, Sendable {
 }
 
 public enum SprayTrigger: String, Codable, Sendable {
-    case button, menuBar, widget, url, schedule, hotkey, cli
+    case button, menuBar, widget, url, schedule, hotkey, cli, shortcut
 }
 
 public struct SprayRecord: Codable, Identifiable, Hashable, Sendable {
