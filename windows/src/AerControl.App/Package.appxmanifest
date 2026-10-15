@@ -9,7 +9,7 @@
   IgnorableNamespaces="uap uap3 uap5 com rescap">
 
   <!-- Publisher must equal the signing certificate's subject (scripts/new-dev-cert.ps1). -->
-  <Identity Name="AerControl" Publisher="CN=AerControl Dev" Version="1.1.0.0" />
+  <Identity Name="AerControl" Publisher="CN=AerControl Dev" Version="1.2.0.0" />
 
   <Properties>
     <DisplayName>AerControl</DisplayName>
