@@ -18,9 +18,8 @@ public final class SprayController: ObservableObject {
     }
     @Published public private(set) var history: [SprayRecord]
     @Published public private(set) var isSpraying = false
-    /// Battery / refill as last reported by the device (nil until the status query is decoded).
+    /// Battery / refill as last reported by the device.
     @Published public private(set) var deviceStatus: DeviceStatus?
-    public var supportsDeviceStatus: Bool { AerStatusProtocol.requestPayload != nil }
 
     public let ble: BLEService
     public let log: FileLogger
@@ -30,6 +29,12 @@ public final class SprayController: ObservableObject {
     private let settingsStore: SettingsStore
     private let historyStore: HistoryStore
     private var lastPublishedStatus: LinkStatus?
+    private let statusDefaults: UserDefaults
+    private static let statusKey = "deviceStatus.v1"
+
+    private static func loadStatus(_ d: UserDefaults) -> DeviceStatus? {
+        d.data(forKey: statusKey).flatMap { try? JSONDecoder().decode(DeviceStatus.self, from: $0) }
+    }
     private var cancellables: Set<AnyCancellable> = []
 
     public init(defaults: UserDefaults = AerShared.defaults, ble: BLEService? = nil, log: FileLogger = .shared) {
@@ -38,6 +43,8 @@ public final class SprayController: ObservableObject {
         self.historyStore = HistoryStore(defaults: defaults)
         self.settings = settingsStore.load()
         self.history = historyStore.load()
+        self.statusDefaults = defaults
+        self.deviceStatus = Self.loadStatus(defaults)
         self.ble = ble ?? BLEService(log: log)
         applySettingsToBLE()
 
@@ -92,10 +99,13 @@ public final class SprayController: ObservableObject {
         var record: SprayRecord
         do {
             let outcome = try await ble.send(data)
-            record = SprayRecord(success: true, trigger: trigger, messageNumber: mn,
-                                 writeMode: outcome.mode, reply: outcome.reply?.hexString)
+            record = Self.sprayRecord(for: outcome, trigger: trigger, messageNumber: mn)
             if settings.autoIncrementMessageNumber {
                 settings.messageNumber = MessageCounter.next(after: mn)
+            }
+            // The link is still up: refresh counters/battery while we're connected.
+            if record.success, rawPayload == nil {
+                Task { await self.refreshDeviceStatus() }
             }
         } catch {
             record = SprayRecord(success: false, trigger: trigger, messageNumber: mn,
@@ -109,19 +119,69 @@ public final class SprayController: ObservableObject {
         return record
     }
 
-    /// Asks the device for battery / refill level. A no-op until the status query is decoded.
-    public func refreshDeviceStatus() async {
-        guard let request = AerStatusProtocol.requestPayload else { return }
+
+    /// The device acks a spray on the RESPONSE characteristic with `{mT:154, ack:200}`. A
+    /// missing ack (older firmware, lost notification) still counts as sent.
+    nonisolated static func sprayRecord(for outcome: WriteOutcome, trigger: SprayTrigger, messageNumber: UInt32) -> SprayRecord {
+        let hex = outcome.reply?.hexString
+        guard let ack = outcome.reply.flatMap({ AerReply.parse([UInt8]($0)) }),
+              ack.messageType == Int(AerMessageType.sprayNow.responseType) else {
+            return SprayRecord(success: true, trigger: trigger, messageNumber: messageNumber,
+                               writeMode: outcome.mode, reply: hex)
+        }
+        if ack.isSuccess {
+            return SprayRecord(success: true, trigger: trigger, messageNumber: messageNumber,
+                               writeMode: "\(outcome.mode), confirmed", reply: hex)
+        }
+        return SprayRecord(success: false, trigger: trigger, messageNumber: messageNumber,
+                           writeMode: outcome.mode,
+                           error: "Device rejected the spray (ack \(ack.acknowledgement ?? -1)).", reply: hex)
+    }
+
+    /// Uses and advances the shared message counter, like a spray.
+    private func nextMessageNumber() -> UInt32 {
+        let mn = settings.messageNumber
+        if settings.autoIncrementMessageNumber { settings.messageNumber = MessageCounter.next(after: mn) }
+        return mn
+    }
+
+    /// Asks the device for battery and refill level (fetch status: mT 107, reply 157).
+    @discardableResult
+    public func refreshDeviceStatus() async -> DeviceStatus? {
         do {
-            let outcome = try await ble.send(Data(request))
-            if let reply = outcome.reply, let f = AerStatusProtocol.parse([UInt8](reply)) {
-                deviceStatus = DeviceStatus(batteryPercent: f.batteryPercent, spraysRemaining: f.spraysRemaining,
-                                            refillCapacity: f.refillCapacity)
-                publishSnapshot(force: true)
+            let outcome = try await ble.send(Data(AerCommands.fetchStatus(messageNumber: nextMessageNumber())))
+            guard let reply = outcome.reply, let r = DeviceStatusReport.parse([UInt8](reply)) else {
+                log.warn("status: no fetch-status reply (got \(outcome.reply?.hexString ?? "nothing"))")
+                return nil
             }
+            apply(r)
+            log.info("status: battery \(r.batteryMillivolts ?? -1) mV, \(r.totalSprays) sprays since refill, fw \(r.firmwareVersion ?? "?")")
+            return deviceStatus
         } catch {
             log.warn("status refresh failed: \(error.localizedDescription)")
+            return nil
         }
+    }
+
+    /// Tells the device a fresh refill went in (mT 105, rR:true), which resets its spray
+    /// counters, then re-reads the status.
+    public func resetRefill() async throws {
+        let outcome = try await ble.send(Data(AerCommands.refill(messageNumber: nextMessageNumber())))
+        if let reply = outcome.reply.flatMap({ AerReply.parse([UInt8]($0)) }),
+           reply.messageType == Int(AerMessageType.refill.responseType), !reply.isSuccess {
+            throw BLEError.writeFailed("device rejected the refill reset (ack \(reply.acknowledgement ?? -1))")
+        }
+        log.info("refill reset sent")
+        await refreshDeviceStatus()
+    }
+
+    private func apply(_ r: DeviceStatusReport) {
+        deviceStatus = DeviceStatus(batteryPercent: r.batteryPercentEstimate, batteryMillivolts: r.batteryMillivolts,
+                                    spraysRemaining: r.spraysRemaining, refillCapacity: DeviceStatusReport.refillCapacity,
+                                    refillPercent: r.refillPercent, totalSprays: r.totalSprays,
+                                    firmwareVersion: r.firmwareVersion)
+        if let data = try? JSONEncoder().encode(deviceStatus) { statusDefaults.set(data, forKey: Self.statusKey) }
+        publishSnapshot(force: true)
     }
 
     public func clearHistory() {

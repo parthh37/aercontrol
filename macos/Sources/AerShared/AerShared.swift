@@ -74,26 +74,40 @@ public struct SprayRecord: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// Battery and refill level, as last reported by the device.
+/// Battery and refill level, as last reported by the device (fetch-status reply).
 public struct DeviceStatus: Codable, Equatable, Sendable {
+    /// Estimated from voltage (the device reports millivolts only).
     public var batteryPercent: Int?
+    public var batteryMillivolts: Int?
     public var spraysRemaining: Int?
     public var refillCapacity: Int?
+    public var refillPercent: Int?
+    public var totalSprays: Int?
+    public var firmwareVersion: String?
     public var updatedAt: Date
 
-    public init(batteryPercent: Int? = nil, spraysRemaining: Int? = nil, refillCapacity: Int? = nil,
-                updatedAt: Date = .now) {
+    public init(batteryPercent: Int? = nil, batteryMillivolts: Int? = nil, spraysRemaining: Int? = nil,
+                refillCapacity: Int? = nil, refillPercent: Int? = nil, totalSprays: Int? = nil,
+                firmwareVersion: String? = nil, updatedAt: Date = .now) {
         self.batteryPercent = batteryPercent
+        self.batteryMillivolts = batteryMillivolts
         self.spraysRemaining = spraysRemaining
         self.refillCapacity = refillCapacity
+        self.refillPercent = refillPercent
+        self.totalSprays = totalSprays
+        self.firmwareVersion = firmwareVersion
         self.updatedAt = updatedAt
     }
 
-    /// 0…1 refill level when both numbers are known.
-    public var refillFraction: Double? {
-        guard let r = spraysRemaining, let c = refillCapacity, c > 0 else { return nil }
-        return min(1, max(0, Double(r) / Double(c)))
+    public var refillFraction: Double? { refillPercent.map { Double($0) / 100 } }
+
+    /// "2.51 V" style.
+    public var batteryVoltsText: String? {
+        batteryMillivolts.map { String(format: "%.2f V", Double($0) / 1000) }
     }
+
+    /// Below 2.8 V the vendor app warns; below 2.7 V it shows a danger icon.
+    public var batteryLow: Bool { (batteryMillivolts ?? .max) < 2800 }
 }
 
 /// What the widget renders. Written by the app on every state change that matters.

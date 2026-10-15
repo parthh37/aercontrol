@@ -13,6 +13,9 @@ commands:
         [--count N] [--interval SECONDS] [--raw HEX]
                                    connect and send the spray payload
   inspect [--device ADDR]          connect and list all GATT services/characteristics
+  status [--device ADDR]           battery, refill level, firmware (fetch status)
+  refill-reset [--device ADDR] --yes
+                                   tell the device a new refill went in (resets counters)
   remember <ADDR>                  set the default device (AA:BB:CC:DD:EE:FF)
   forget                           clear the default device
   payload [--mn N]                 print the payload hex without sending
@@ -129,6 +132,42 @@ switch (command)
         {
             await c.Session.DisconnectAsync("cli done");
         }
+        return 0;
+    }
+
+    case "status":
+    case "refill-reset":
+    {
+        var c = NewController(out _);
+        if (await ApplyDeviceOption(c) is int code) return code;
+        if (c.Settings.DeviceAddress is null) return Fail("no device. Use --device or `aerctl remember`");
+        await c.UpdateSettingsAsync(s => s.IdleDisconnectSeconds = 0);
+        await c.InitializeAsync();
+        try
+        {
+            if (command == "refill-reset")
+            {
+                if (!flags.Contains("yes")) return Fail("this resets the device's spray counter; re-run with --yes after inserting a new refill");
+                await c.ResetRefillAsync();
+                Console.WriteLine("refill reset");
+            }
+            else
+            {
+                await c.RefreshDeviceStatusAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            return Fail(ex.Message);
+        }
+        finally
+        {
+            await c.Session.DisconnectAsync("cli done");
+        }
+        if (c.DeviceStatus is not DeviceStatus st) return Fail("no status reply from the device");
+        Console.WriteLine($"battery:  {st.BatteryVolts}  (~{st.BatteryPercent}%, estimated){(st.BatteryLow ? "  LOW" : "")}");
+        Console.WriteLine($"refill:   {st.RefillPercent}%  ({st.SpraysRemaining} of {st.RefillCapacity} left, {st.TotalSprays} sprays since reset)");
+        Console.WriteLine($"firmware: {st.FirmwareVersion}");
         return 0;
     }
 

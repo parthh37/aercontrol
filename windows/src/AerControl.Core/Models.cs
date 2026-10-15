@@ -44,13 +44,35 @@ public sealed record SprayRecord
     public string? Reply { get; init; }
 }
 
-/// <summary>Battery and refill level as last reported by the device.</summary>
-public sealed record DeviceStatus(int? BatteryPercent, int? SpraysRemaining, int? RefillCapacity, DateTimeOffset UpdatedAt)
+/// <summary>Battery and refill level from the device's fetch-status reply.</summary>
+public sealed record DeviceStatus
 {
-    public double? RefillFraction =>
-        SpraysRemaining is int r && RefillCapacity is int c && c > 0 ? Math.Clamp((double)r / c, 0, 1) : null;
-    public string BatteryText => BatteryPercent is int b ? $"{b}%" : "—";
-    public string RefillText => SpraysRemaining is int r ? (RefillCapacity is int c ? $"{r}/{c}" : $"{r}") : "—";
+    /// <summary>Estimated from voltage; the device reports millivolts only.</summary>
+    public int? BatteryPercent { get; init; }
+    public int? BatteryMillivolts { get; init; }
+    public int? SpraysRemaining { get; init; }
+    public int? RefillCapacity { get; init; }
+    public int? RefillPercent { get; init; }
+    public int? TotalSprays { get; init; }
+    public string? FirmwareVersion { get; init; }
+    public DateTimeOffset UpdatedAt { get; init; } = DateTimeOffset.Now;
+
+    public static DeviceStatus From(Protocol.DeviceStatusReport r) => new()
+    {
+        BatteryPercent = r.BatteryPercentEstimate,
+        BatteryMillivolts = r.BatteryMillivolts,
+        SpraysRemaining = r.SpraysRemaining,
+        RefillCapacity = Protocol.DeviceStatusReport.RefillCapacity,
+        RefillPercent = r.RefillPercent,
+        TotalSprays = r.TotalSprays,
+        FirmwareVersion = r.FirmwareVersion,
+    };
+
+    /// <summary>Below 2.8 V the vendor app warns; below 2.7 V it shows a danger icon.</summary>
+    public bool BatteryLow => BatteryMillivolts is int mv && mv < Protocol.DeviceStatusReport.BatteryLowMillivolts;
+    public string? BatteryVolts => BatteryMillivolts is int mv ? $"{mv / 1000.0:0.00} V" : null;
+    public string BatteryText => BatteryVolts is string v ? (BatteryPercent is int p ? $"~{p}% · {v}" : v) : "—";
+    public string RefillText => RefillPercent is int p && SpraysRemaining is int r ? $"{p}% · {r} left" : "—";
 }
 
 public sealed record DiscoveredDevice(ulong Address, string Name, short Rssi, bool AdvertisesService, DateTimeOffset LastSeen)

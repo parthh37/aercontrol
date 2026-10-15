@@ -2,7 +2,10 @@ import Foundation
 
 public enum AerGATT {
     public static let serviceUUIDString = "6E400000-B5A3-F393-E0A9-E50E24DCCA9E"
+    /// Commands (spray, fetch status, refill…) are written here ("ACTION" in the vendor app).
     public static let characteristicUUIDString = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+    /// Replies (154 spray ack, 157 status…) are notified here ("RESPONSE" in the vendor app).
+    public static let responseUUIDString = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 }
 
 /// `{mT, mN, rI}` spray command, encoded as an indefinite-length CBOR map with keys

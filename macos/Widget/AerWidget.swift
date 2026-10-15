@@ -63,8 +63,9 @@ struct AerWidgetView: View {
                 lastSpray
                 Spacer(minLength: 0)
                 HStack(spacing: 10) {
-                    Label(snap.deviceStatus?.batteryPercent.map { "\($0)%" } ?? "—", systemImage: "battery.75")
-                    Label(snap.deviceStatus?.spraysRemaining.map(String.init) ?? "—", systemImage: "drop.fill")
+                    Label(snap.deviceStatus?.batteryPercent.map { "~\($0)%" } ?? "—",
+                          systemImage: snap.deviceStatus?.batteryLow == true ? "battery.25" : "battery.75")
+                    Label(snap.deviceStatus?.refillPercent.map { "\($0)%" } ?? "—", systemImage: "drop.fill")
                 }
                 .font(.caption.monospacedDigit())
                 .opacity(0.85)

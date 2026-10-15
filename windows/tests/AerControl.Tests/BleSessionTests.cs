@@ -197,7 +197,10 @@ public class BleSessionTests
     {
         var (s, link, _) = Make();
         var dir = Path.Combine(Path.GetTempPath(), $"aer-{Guid.NewGuid()}");
-        var c = new SprayController(s, Log, Path.Combine(dir, "settings.json"), Path.Combine(dir, "history.json"));
+        var c = new SprayController(s, Log, Path.Combine(dir, "settings.json"), Path.Combine(dir, "history.json"))
+        {
+            RefreshStatusAfterSpray = false,
+        };
         await c.UpdateSettingsAsync(x => { x.DeviceAddress = 0xAABBCCDDEEFF; x.IdleDisconnectSeconds = 0; });
 
         var r1 = await c.SprayAsync(SprayTrigger.Button);

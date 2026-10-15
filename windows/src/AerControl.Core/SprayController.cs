@@ -11,6 +11,7 @@ public sealed class SprayController
 {
     private readonly JsonFileStore<AerSettings> _settingsStore;
     private readonly JsonFileStore<List<SprayRecord>> _historyStore;
+    private readonly JsonFileStore<List<DeviceStatus>> _statusStore;
     private readonly object _lock = new();
     private List<SprayRecord> _history;
     private AerSettings _settings;
@@ -26,6 +27,9 @@ public sealed class SprayController
         _historyStore = new JsonFileStore<List<SprayRecord>>(historyPath);
         _settings = _settingsStore.Load();
         _history = _historyStore.Load();
+        _statusStore = new JsonFileStore<List<DeviceStatus>>(
+            Path.Combine(Path.GetDirectoryName(settingsPath) ?? ".", "status.json"));
+        DeviceStatus = _statusStore.Load().FirstOrDefault();
         Session.StatusChanged += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -42,27 +46,79 @@ public sealed class SprayController
     public SprayRecord? LastSpray { get { lock (_lock) return _history.FirstOrDefault(); } }
     public bool IsSpraying => Volatile.Read(ref _spraying) > 0;
 
-    /// <summary>Battery / refill as last reported (null until the status query is decoded).</summary>
-    public DeviceStatus? DeviceStatus { get; private set; }
-    public bool SupportsDeviceStatus => AerStatusProtocol.RequestPayload is not null;
+    /// <summary>Read battery/refill right after each successful spray, while still connected.</summary>
+    public bool RefreshStatusAfterSpray { get; set; } = true;
 
-    /// <summary>Asks the device for battery / refill level. A no-op until the query is decoded.</summary>
-    public async Task RefreshDeviceStatusAsync(CancellationToken ct = default)
+    /// <summary>Battery / refill as last reported by the device (persisted across launches).</summary>
+    public DeviceStatus? DeviceStatus { get; private set; }
+
+    /// <summary>Uses and advances the shared message counter, like a spray.</summary>
+    private uint NextMessageNumber()
     {
-        if (AerStatusProtocol.RequestPayload is not byte[] request) return;
+        lock (_lock)
+        {
+            var mn = _settings.MessageNumber;
+            if (_settings.AutoIncrementMessageNumber)
+            {
+                _settings.MessageNumber = MessageCounter.Next(mn);
+                _settingsStore.Save(_settings);
+            }
+            return mn;
+        }
+    }
+
+    /// <summary>Asks the device for battery and refill level (fetch status: mT 107, reply 157).</summary>
+    public async Task<DeviceStatus?> RefreshDeviceStatusAsync(CancellationToken ct = default)
+    {
         try
         {
-            var outcome = await Session.SendAsync(request, ct).ConfigureAwait(false);
-            if (outcome.Reply is byte[] reply && AerStatusProtocol.Parse(reply) is DeviceStatusFields f)
+            var outcome = await Session.SendAsync(AerCommands.FetchStatus(NextMessageNumber()), ct).ConfigureAwait(false);
+            if (outcome.Reply is not byte[] reply || DeviceStatusReport.Parse(reply) is not DeviceStatusReport r)
             {
-                DeviceStatus = new DeviceStatus(f.BatteryPercent, f.SpraysRemaining, f.RefillCapacity, DateTimeOffset.Now);
-                Changed?.Invoke(this, EventArgs.Empty);
+                Log.Warn($"status: no fetch-status reply (got {(outcome.Reply is null ? "nothing" : Hex.ToHex(outcome.Reply))})");
+                return null;
             }
+            DeviceStatus = Core.DeviceStatus.From(r);
+            _statusStore.Save(new List<DeviceStatus> { DeviceStatus });
+            Log.Info($"status: battery {r.BatteryMillivolts} mV, {r.TotalSprays} sprays since refill, fw {r.FirmwareVersion}");
+            Changed?.Invoke(this, EventArgs.Empty);
+            return DeviceStatus;
         }
         catch (Exception ex)
         {
             Log.Warn($"status refresh failed: {ex.Message}");
+            return null;
         }
+    }
+
+    /// <summary>Tells the device a fresh refill went in (mT 105, rR:true), resetting its counters.</summary>
+    public async Task ResetRefillAsync(CancellationToken ct = default)
+    {
+        var outcome = await Session.SendAsync(AerCommands.Refill(NextMessageNumber()), ct).ConfigureAwait(false);
+        if (outcome.Reply is byte[] b && AerReply.Parse(b) is { } reply
+            && reply.MessageType == AerMessageType.Refill.ResponseType() && !reply.IsSuccess)
+            throw new BleException(BleErrorKind.WriteFailed, $"device rejected the refill reset (ack {reply.Acknowledgement})");
+        Log.Info("refill reset sent");
+        await RefreshDeviceStatusAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The device acks a spray on the RESPONSE characteristic with {mT:154, ack:200}. A
+    /// missing ack (older firmware, lost notification) still counts as sent.
+    /// </summary>
+    public static SprayRecord RecordFor(WriteOutcome outcome, SprayTrigger trigger, uint messageNumber)
+    {
+        var hex = outcome.Reply is null ? null : Hex.ToHex(outcome.Reply);
+        var ack = outcome.Reply is null ? null : AerReply.Parse(outcome.Reply);
+        if (ack is null || ack.MessageType != AerMessageType.SprayNow.ResponseType())
+            return new SprayRecord { Success = true, Trigger = trigger, MessageNumber = messageNumber, WriteMode = outcome.Mode, Reply = hex };
+        if (ack.IsSuccess)
+            return new SprayRecord { Success = true, Trigger = trigger, MessageNumber = messageNumber, WriteMode = $"{outcome.Mode}, confirmed", Reply = hex };
+        return new SprayRecord
+        {
+            Success = false, Trigger = trigger, MessageNumber = messageNumber, WriteMode = outcome.Mode, Reply = hex,
+            Error = $"Device rejected the spray (ack {ack.Acknowledgement}).",
+        };
     }
 
     public async Task InitializeAsync()
@@ -126,11 +182,7 @@ public sealed class SprayController
         try
         {
             var outcome = await Session.SendAsync(data, ct).ConfigureAwait(false);
-            record = new SprayRecord
-            {
-                Success = true, Trigger = trigger, MessageNumber = mn, WriteMode = outcome.Mode,
-                Reply = outcome.Reply is null ? null : Hex.ToHex(outcome.Reply),
-            };
+            record = RecordFor(outcome, trigger, mn);
             lock (_lock)
             {
                 if (_settings.AutoIncrementMessageNumber)
@@ -155,6 +207,9 @@ public sealed class SprayController
         }
         Interlocked.Decrement(ref _spraying);
         Changed?.Invoke(this, EventArgs.Empty);
+        // The link is still up: refresh counters and battery while connected.
+        if (record.Success && rawPayload is null && RefreshStatusAfterSpray)
+            _ = RefreshDeviceStatusAsync(CancellationToken.None);
         return record;
     }
 

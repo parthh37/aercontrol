@@ -85,5 +85,6 @@ public static class AppPaths
 
     public static string SettingsFile => System.IO.Path.Combine(DataDirectory, "settings.json");
     public static string HistoryFile => System.IO.Path.Combine(DataDirectory, "history.json");
+    public static string StatusFile => System.IO.Path.Combine(DataDirectory, "status.json");
     public static string LogFile => System.IO.Path.Combine(DataDirectory, "logs", "aercontrol.log");
 }

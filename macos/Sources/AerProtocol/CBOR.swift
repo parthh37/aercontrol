@@ -15,6 +15,8 @@ public struct CBORWriter {
         writeHead(major: 0, argument: value)
     }
 
+    public mutating func bool(_ value: Bool) { bytes.append(value ? 0xF5 : 0xF4) }
+
     public mutating func text(_ string: String) {
         let utf8 = Array(string.utf8)
         writeHead(major: 3, argument: UInt64(utf8.count))

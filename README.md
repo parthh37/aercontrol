@@ -18,7 +18,9 @@ Widgets Board on Windows 11).
 | Actions | Shortcuts / Siri / Spotlight: *Spray Air Freshener*, *Get Air Freshener Status* | Jump list: *Spray now* |
 | Widget (small + medium) with Spray button | ✅ WidgetKit | ✅ Windows 11 Widgets Board |
 | CLI (`aerctl`) | ✅ | ✅ |
-| Battery % / sprays remaining | 🚧 UI ready, protocol not yet decoded ([why](#battery-and-refill-level)) | 🚧 |
+| Battery (voltage + estimated %) and refill level / sprays remaining | ✅ | ✅ |
+| Reset refill level after inserting a new can | ✅ | ✅ |
+| Device-confirmed sprays (`ack 200`) | ✅ | ✅ |
 | Log file | `~/Library/Logs/AerControl/` (in the app container when sandboxed) | app LocalFolder `\logs` |
 
 ## Before you start
@@ -74,6 +76,8 @@ macos/.build/release/aerctl scan                 # find your device
 macos/.build/release/aerctl remember <UUID>
 macos/.build/release/aerctl spray                # also: --count 3 --interval 5, --mn 200
 macos/.build/release/aerctl inspect              # dump the GATT table
+macos/.build/release/aerctl status               # battery, refill level, firmware
+macos/.build/release/aerctl refill-reset --yes   # after inserting a new refill
 macos/.build/release/aerctl probe                # read every characteristic + listen (never writes)
 ```
 
@@ -141,22 +145,37 @@ tools/gen_icons.py   dependency-free icon generator
 
 ## Protocol in one paragraph
 
-Write the 16-byte indefinite-length CBOR map `{"mT":104,"mN":154,"rI":0}`
-(`bf 62 6d 54 18 68 62 6d 4e 18 9a 62 72 49 00 ff`) **without response** to
-characteristic `6E400003-B5A3-F393-E0A9-E50E24DCCA9E` in service `6E400000-…`. Two
-details matter, as live testing showed: **enable notifications** on that characteristic
-first, and **don't disconnect immediately** after the write (both clients wait 1 s).
-Without those, the write is silently dropped. Details are in
+Commands are indefinite-length CBOR maps written **without response** to
+`6E400003-B5A3-F393-E0A9-E50E24DCCA9E` (service `6E400000-…`). Replies `{mT+50, mN,
+ack:200, …}` arrive as notifications on `6E400001-…`. Spray is
+`{"mT":104,"mN":154,"rI":0}` (`bf 62 6d 54 18 68 62 6d 4e 18 9a 62 72 49 00 ff`).
+Live testing showed two details matter: **enable notifications** first, and **don't
+disconnect immediately** after the write (both clients wait 1 s for the reply). The full
+message table (from the vendor app's transcoder library) and the status layout are in
 [`protocol/README.md`](protocol/README.md).
 
 ## Battery and refill level
 
-The official app shows battery % and sprays remaining. On the device, every
-characteristic reads `00 00` and nothing is sent unprompted, so the app must send a
-status-query command. That command hasn't been decoded yet, because it needs the
-official APK (`com.godrejcp.aermatic`). Both apps already have the UI slots, widget
-fields and a single parser stub (`AerStatusProtocol` in each client), so supporting it
-is a small, contained change. Contributions welcome.
+AerControl sends the same **fetch status** query as the official app (`mT 107`; the
+reply arrives on characteristic `…0001`). It shows:
+
+* **Refill**: `% · sprays left`, computed exactly like the Godrej app. A can is rated at
+  2200 sprays, counted across button presses, schedules and spray-now. After inserting
+  a new can, press **Reset refill…** (or run `aerctl refill-reset --yes`) so the count
+  starts again from zero.
+* **Battery**: the measured voltage plus an estimated percentage. The Godrej app warns
+  below 2.8 V and shows a danger icon below 2.7 V; AerControl highlights the chip in the
+  same cases.
+
+Status is read at launch, after each spray, on **Refresh status**, and otherwise at
+most every 6 hours, so the phone app isn't locked out.
+
+```bash
+aerctl status
+# battery:  2.51 V  (~13%, estimated)  LOW
+# refill:   0%  (0 of 2200 left, 2832 sprays since reset)
+# firmware: 3.0.6-T1
+```
 
 ## Troubleshooting
 

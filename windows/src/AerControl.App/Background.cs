@@ -62,7 +62,8 @@ public sealed class TrayIcon : IDisposable
         var name = c.Settings.DeviceName ?? "No device";
         var last = c.LastSpray is { } l ? $"last spray {Pages.SprayPage.Ago(l.Date)}{(l.Success ? "" : " (failed)")}" : "no sprays yet";
         _statusItem.Text = $"{name}: {c.Session.Status.Label()}";
-        _icon.ToolTipText = $"AerControl: {name}, {c.Session.Status.Label()}\n{last}";
+        var status = c.DeviceStatus is { } s ? $"\nbattery {s.BatteryText}, refill {s.RefillText}" : "";
+        _icon.ToolTipText = $"AerControl: {name}, {c.Session.Status.Label()}\n{last}{status}";
     }
 
     public void ShowNotification(string title, string message) =>
@@ -92,10 +93,23 @@ public sealed class SprayScheduler
     private static DateTime? LastScheduledSpray =>
         AppServices.Controller.History.FirstOrDefault(r => r.Trigger == SprayTrigger.Schedule)?.Date.LocalDateTime;
 
+    /// <summary>
+    /// Battery and refill change slowly, and each read briefly takes the link from the phone
+    /// app, so read at launch and then at most every 6 hours (sprays refresh it too).
+    /// </summary>
+    public static void RefreshStatusIfStale()
+    {
+        var c = AppServices.Controller;
+        if (c.Settings.DeviceAddress is null || c.IsSpraying) return;
+        if (c.DeviceStatus is { } s && DateTimeOffset.Now - s.UpdatedAt < TimeSpan.FromHours(6)) return;
+        _ = c.RefreshDeviceStatusAsync();
+    }
+
     private static void Tick()
     {
         var c = AppServices.Controller;
         if (c.IsSpraying) return;
+        RefreshStatusIfStale();
         if (new ScheduleEvaluator(c.Settings.Schedule).IsDue(DateTime.Now, LastScheduledSpray))
         {
             c.Log.Info("scheduled spray due");

@@ -55,6 +55,8 @@ public sealed partial class SprayPage : Page
         StatusDot.Fill = StatusBrush(status);
         BatteryText.Text = c.DeviceStatus?.BatteryText ?? "—";
         RefillText.Text = c.DeviceStatus?.RefillText ?? "—";
+        RefreshStatusButton.IsEnabled = hasDevice;
+        ResetRefillButton.IsEnabled = hasDevice;
 
         var last = c.LastSpray;
         LastSprayText.Text = last is null ? "No sprays yet"
@@ -111,6 +113,40 @@ public sealed partial class SprayPage : Page
             ErrorText.Text = ex.Message;
             ErrorText.Visibility = Visibility.Visible;
         }
+    }
+
+    private async void OnRefreshStatusClick(object sender, RoutedEventArgs e)
+    {
+        RefreshStatusButton.IsEnabled = false;
+        var status = await AppServices.Controller.RefreshDeviceStatusAsync();
+        ErrorText.Text = status is null ? "Couldn't read the device status (see log)." : "";
+        ErrorText.Visibility = status is null ? Visibility.Visible : Visibility.Collapsed;
+        Refresh();
+    }
+
+    private async void OnResetRefillClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Reset the refill level?",
+            Content = "This tells the aer that a fresh can is in, which sets its spray counter back to zero (like “Reset level” in the Godrej app).",
+            PrimaryButtonText = "I inserted a new refill: reset",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        try
+        {
+            await AppServices.Controller.ResetRefillAsync();
+            ErrorText.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            ErrorText.Text = ex.Message;
+            ErrorText.Visibility = Visibility.Visible;
+        }
+        Refresh();
     }
 
     private async void OnDisconnectClick(object sender, RoutedEventArgs e) =>

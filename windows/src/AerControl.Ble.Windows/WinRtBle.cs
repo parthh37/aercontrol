@@ -25,6 +25,7 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
     private GattSession? _session;
     private GattDeviceService? _service;
     private GattCharacteristic? _characteristic;
+    private GattCharacteristic? _response;
     private volatile bool _connected;
 
     public bool IsConnected => _connected && _device?.ConnectionStatus == BluetoothConnectionStatus.Connected;
@@ -60,20 +61,29 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         _characteristic = chars.Characteristics.FirstOrDefault()
                           ?? throw new BleException(BleErrorKind.CharacteristicNotFound);
 
-        var props = _characteristic.CharacteristicProperties;
-        log.Info($"characteristic properties: {props}");
-        if (props.HasFlag(GattCharacteristicProperties.Notify) || props.HasFlag(GattCharacteristicProperties.Indicate))
-        {
-            _characteristic.ValueChanged += OnValueChanged;
-            var cccd = props.HasFlag(GattCharacteristicProperties.Notify)
-                ? GattClientCharacteristicConfigurationDescriptorValue.Notify
-                : GattClientCharacteristicConfigurationDescriptorValue.Indicate;
-            var status = await _characteristic.WriteClientCharacteristicConfigurationDescriptorAsync(cccd)
-                .AsTask(ct).ConfigureAwait(false);
-            if (status == GattCommunicationStatus.Success) log.Info("notifications on");
-            else log.Warn($"couldn't enable notifications: {status}");
-        }
+        log.Info($"characteristic properties: {_characteristic.CharacteristicProperties}");
+
+        // Replies (spray ack, status) arrive on the RESPONSE characteristic. Notify stays on
+        // for the command characteristic too, which was part of what made sprays reliable.
+        var responses = await _service.GetCharacteristicsForUuidAsync(AerGatt.Response, BluetoothCacheMode.Uncached)
+            .AsTask(ct).ConfigureAwait(false);
+        _response = responses.Status == GattCommunicationStatus.Success ? responses.Characteristics.FirstOrDefault() : null;
+        foreach (var c in new[] { _characteristic, _response })
+            if (c is not null) await EnableNotificationsAsync(c, ct).ConfigureAwait(false);
         _connected = true;
+    }
+
+    private async Task EnableNotificationsAsync(GattCharacteristic c, CancellationToken ct)
+    {
+        var props = c.CharacteristicProperties;
+        if (!props.HasFlag(GattCharacteristicProperties.Notify) && !props.HasFlag(GattCharacteristicProperties.Indicate)) return;
+        c.ValueChanged += OnValueChanged;
+        var cccd = props.HasFlag(GattCharacteristicProperties.Notify)
+            ? GattClientCharacteristicConfigurationDescriptorValue.Notify
+            : GattClientCharacteristicConfigurationDescriptorValue.Indicate;
+        var status = await c.WriteClientCharacteristicConfigurationDescriptorAsync(cccd).AsTask(ct).ConfigureAwait(false);
+        if (status == GattCommunicationStatus.Success) log.Info($"notifications on for {c.Uuid}");
+        else log.Warn($"couldn't enable notifications on {c.Uuid}: {status}");
     }
 
     public async Task<string> WriteAsync(byte[] data, WriteMode mode, CancellationToken ct)
@@ -126,6 +136,7 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         // the device are disposed and MaintainConnection is off.
         _connected = false;
         if (_characteristic is not null) _characteristic.ValueChanged -= OnValueChanged;
+        if (_response is not null) _response.ValueChanged -= OnValueChanged;
         if (_device is not null) _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
         if (_session is not null)
         {
@@ -135,6 +146,7 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         _service?.Dispose();
         _device?.Dispose();
         _characteristic = null;
+        _response = null;
         _service = null;
         _session = null;
         _device = null;

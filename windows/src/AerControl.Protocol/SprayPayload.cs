@@ -6,7 +6,11 @@ namespace AerControl.Protocol;
 public static class AerGatt
 {
     public const string ServiceUuid = "6E400000-B5A3-F393-E0A9-E50E24DCCA9E";
+    /// <summary>Commands are written here ("ACTION" in the vendor app).</summary>
     public const string CharacteristicUuid = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
+    /// <summary>Replies (154 spray ack, 157 status…) are notified here ("RESPONSE").</summary>
+    public const string ResponseUuid = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
+    public static readonly Guid Response = Guid.Parse(ResponseUuid);
     public static readonly Guid Service = Guid.Parse(ServiceUuid);
     public static readonly Guid Characteristic = Guid.Parse(CharacteristicUuid);
 }
@@ -22,6 +26,7 @@ public sealed class CborWriter
     public void BeginIndefiniteMap() => _bytes.Add(0xBF);
     public void EndIndefinite() => _bytes.Add(0xFF);
     public void WriteUInt(ulong value) => WriteHead(0, value);
+    public void WriteBool(bool value) => _bytes.Add(value ? (byte)0xF5 : (byte)0xF4);
 
     public void WriteText(string text)
     {

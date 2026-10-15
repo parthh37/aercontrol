@@ -16,6 +16,9 @@ commands:
   probe [--device UUID] [--seconds N]
                                    read every characteristic + listen to notifications
                                    (never writes; for finding battery/refill data)
+  status [--device UUID]           battery, refill level, firmware (fetch status)
+  refill-reset [--device UUID] --yes
+                                   tell the device a new refill went in (resets counters)
   remember <UUID>                  set the default device for `spray`
   forget                           clear the default device
   payload [--mn N]                 print the payload hex without sending
@@ -121,6 +124,30 @@ func run() async {
         } catch {
             fail(error.localizedDescription)
         }
+        controller.ble.disconnect(reason: "cli done")
+        try? await Task.sleep(for: .milliseconds(300))
+        return
+
+    case "status", "refill-reset":
+        let controller = SprayController(defaults: defaults, log: log)
+        if let s = args.options["device"] {
+            guard let id = UUID(uuidString: s) else { fail("--device must be a peripheral UUID") }
+            controller.settings.deviceIdentifier = id
+        }
+        guard controller.settings.deviceIdentifier != nil else { fail("no device. Use --device or `aerctl remember`") }
+        controller.settings.idleDisconnectSeconds = 0
+        await waitForBluetooth(controller.ble)
+        if args.command == "refill-reset" {
+            guard args.flags.contains("yes") else { fail("this resets the device's spray counter; re-run with --yes after inserting a new refill") }
+            do { try await controller.resetRefill() } catch { fail(error.localizedDescription) }
+            print("refill reset")
+        } else {
+            _ = await controller.refreshDeviceStatus()
+        }
+        guard let s = controller.deviceStatus else { fail("no status reply from the device") }
+        print("battery:  \(s.batteryVoltsText ?? "?")  (~\(s.batteryPercent ?? 0)%, estimated)\(s.batteryLow ? "  LOW" : "")")
+        print("refill:   \(s.refillPercent ?? 0)%  (\(s.spraysRemaining ?? 0) of \(s.refillCapacity ?? 2200) left, \(s.totalSprays ?? 0) sprays since reset)")
+        print("firmware: \(s.firmwareVersion ?? "?")")
         controller.ble.disconnect(reason: "cli done")
         try? await Task.sleep(for: .milliseconds(300))
         return

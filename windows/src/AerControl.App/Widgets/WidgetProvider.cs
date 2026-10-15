@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using AerControl.Core;
+using Microsoft.Windows.Widgets;
 using Microsoft.Windows.Widgets.Providers;
 
 namespace AerControl.App.Widgets;

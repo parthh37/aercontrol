@@ -49,6 +49,7 @@ final class BackgroundServices: ObservableObject {
         }
         // The widget may have launched us through the URL fallback; pick up its request.
         handlePendingWidgetRequest()
+        refreshStatusIfStale()
     }
 
     // MARK: Schedule
@@ -58,7 +59,17 @@ final class BackgroundServices: ObservableObject {
         model.controller.history.first { $0.trigger == .schedule }?.date
     }
 
+    /// Battery and refill change slowly, and every read briefly takes the link from the
+    /// phone app, so read at launch and then at most every 6 hours (sprays refresh it too).
+    private func refreshStatusIfStale() {
+        let c = model.controller
+        guard c.settings.deviceIdentifier != nil, !c.isSpraying else { return }
+        if let at = c.deviceStatus?.updatedAt, Date().timeIntervalSince(at) < 6 * 3600 { return }
+        Task { await c.refreshDeviceStatus() }
+    }
+
     private func tickSchedule() {
+        refreshStatusIfStale()
         let evaluator = ScheduleEvaluator(schedule: model.controller.settings.schedule)
         if evaluator.isDue(now: .now, lastScheduledSpray: lastScheduledSpray), !model.controller.isSpraying {
             model.log.info("scheduled spray due")

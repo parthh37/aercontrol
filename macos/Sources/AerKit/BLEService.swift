@@ -85,6 +85,7 @@ final class Waiter<T> {
 public final class BLEService: NSObject, ObservableObject {
     public static let serviceUUID = CBUUID(string: AerGATT.serviceUUIDString)
     public static let characteristicUUID = CBUUID(string: AerGATT.characteristicUUIDString)
+    public static let responseUUID = CBUUID(string: AerGATT.responseUUIDString)
 
     @Published public private(set) var managerState: CBManagerState = .unknown
     @Published public private(set) var status: LinkStatus = .noDevice
@@ -296,17 +297,22 @@ public final class BLEService: NSObject, ObservableObject {
         guard let service = p.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
             throw BLEError.serviceNotFound
         }
-        p.discoverCharacteristics([Self.characteristicUUID], for: service)
+        p.discoverCharacteristics([Self.characteristicUUID, Self.responseUUID], for: service)
         try await characteristicsWaiter.wait(timeout: 8, step: "characteristic discovery")
         guard let c = service.characteristics?.first(where: { $0.uuid == Self.characteristicUUID }) else {
             throw BLEError.characteristicNotFound
         }
-        if c.properties.contains(.notify) || c.properties.contains(.indicate) {
-            p.setNotifyValue(true, for: c)
+        // The device replies on the RESPONSE characteristic; keep notify on the command
+        // characteristic too (enabling it was part of what made the first spray work).
+        let response = service.characteristics?.first(where: { $0.uuid == Self.responseUUID })
+        for n in [c, response].compactMap({ $0 })
+        where n.properties.contains(.notify) || n.properties.contains(.indicate) {
+            p.setNotifyValue(true, for: n)
             do {
                 try await notifyStateWaiter.wait(timeout: 3, step: "enable notifications")
             } catch {
-                log.warn("couldn't enable notifications: \(error.localizedDescription)")
+                // Seen on the RESPONSE characteristic even though replies still arrive.
+                log.info("notify setup on \(n.uuid) reported: \(error.localizedDescription)")
             }
         }
         characteristic = c

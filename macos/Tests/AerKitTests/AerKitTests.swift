@@ -57,3 +57,31 @@ import Testing
         #expect(!ScheduleEvaluator(schedule: sched).isDue(now: at(10, 0), lastScheduledSpray: nil, calendar: cal))
     }
 }
+
+@Suite struct SprayAckTests {
+    private func outcome(_ hex: String?) -> WriteOutcome {
+        WriteOutcome(mode: "without-response", reply: hex.flatMap { [UInt8](hex: $0) }.map { Data($0) })
+    }
+
+    @Test func confirmedWhenDeviceAcks200() {
+        // {mT:154, mN:160, ack:200}
+        let r = SprayController.sprayRecord(for: outcome("bf626d54189a626d4e18a06361636b18c8ff"),
+                                            trigger: .button, messageNumber: 160)
+        #expect(r.success)
+        #expect(r.writeMode == "without-response, confirmed")
+    }
+
+    @Test func failedWhenDeviceRejects() {
+        // {mT:154, mN:160, ack:100}
+        let r = SprayController.sprayRecord(for: outcome("bf626d54189a626d4e18a06361636b1864ff"),
+                                            trigger: .button, messageNumber: 160)
+        #expect(!r.success)
+        #expect(r.error?.contains("ack 100") == true)
+    }
+
+    @Test func noReplyStillCountsAsSent() {
+        let r = SprayController.sprayRecord(for: outcome(nil), trigger: .schedule, messageNumber: 1)
+        #expect(r.success)
+        #expect(r.writeMode == "without-response")
+    }
+}

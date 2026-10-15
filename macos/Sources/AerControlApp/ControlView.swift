@@ -63,6 +63,8 @@ struct ControlView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var controller: SprayController
     @ObservedObject var ble: BLEService
+    @State private var confirmRefill = false
+    @State private var refillError: String?
 
     init(model: AppModel) {
         self.model = model
@@ -94,10 +96,31 @@ struct ControlView: View {
                 } else {
                     Text("No sprays yet").foregroundStyle(.secondary)
                 }
+                if let refillError {
+                    Text(refillError).font(.callout).foregroundStyle(.red)
+                }
                 if let flash = model.flash, !flash.success, let err = flash.error {
                     Text(err).font(.callout).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 }
                 HStack {
+                    Button {
+                        Task { await controller.refreshDeviceStatus() }
+                    } label: {
+                        Label("Refresh status", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(controller.settings.deviceIdentifier == nil)
+                    Button("Reset refill…") { confirmRefill = true }
+                        .disabled(controller.settings.deviceIdentifier == nil)
+                        .confirmationDialog("Reset the refill level?", isPresented: $confirmRefill) {
+                            Button("I inserted a new refill: reset") {
+                                Task {
+                                    do { try await controller.resetRefill() }
+                                    catch { refillError = error.localizedDescription }
+                                }
+                            }
+                        } message: {
+                            Text("This tells the aer that a fresh can is in, which sets its spray counter back to zero (like “Reset level” in the Godrej app).")
+                        }
                     if ble.status == .connected {
                         Button("Disconnect") { ble.disconnect() }
                     } else if controller.settings.deviceIdentifier != nil {
@@ -112,23 +135,29 @@ struct ControlView: View {
     }
 }
 
-/// Battery and refill chips; "—" until the device's status query is decoded.
+/// Battery and refill chips from the device's fetch-status reply ("—" before the first read).
 struct DeviceStatusChips: View {
     let status: DeviceStatus?
 
     var body: some View {
         HStack(spacing: 6) {
-            chip(symbol: batterySymbol, text: status?.batteryPercent.map { "\($0)%" } ?? "—",
-                 help: "Battery")
-            chip(symbol: "drop.fill", text: refillText, help: "Sprays remaining in refill")
+            chip(symbol: batterySymbol, text: batteryText,
+                 help: "Battery \(status?.batteryVoltsText ?? "unknown"). The percentage is estimated from voltage (2.4–3.2 V); the official app warns below 2.8 V.",
+                 warn: status?.batteryLow == true)
+            chip(symbol: "drop.fill", text: refillText,
+                 help: status?.totalSprays.map { "\($0) sprays since the last refill reset (a refill lasts about \(status?.refillCapacity ?? 2200))." } ?? "Refill level",
+                 warn: (status?.refillPercent ?? 100) <= 7)
         }
-        .help(status == nil ? "Battery and refill level aren't decoded from the aer protocol yet." : "")
+    }
+
+    private var batteryText: String {
+        guard let s = status, let v = s.batteryVoltsText else { return "—" }
+        return s.batteryPercent.map { "~\($0)% · \(v)" } ?? v
     }
 
     private var refillText: String {
-        guard let r = status?.spraysRemaining else { return "—" }
-        if let c = status?.refillCapacity { return "\(r)/\(c)" }
-        return "\(r)"
+        guard let r = status?.spraysRemaining, let p = status?.refillPercent else { return "—" }
+        return "\(p)% · \(r) left"
     }
 
     private var batterySymbol: String {
@@ -141,10 +170,10 @@ struct DeviceStatusChips: View {
         }
     }
 
-    private func chip(symbol: String, text: String, help: String) -> some View {
+    private func chip(symbol: String, text: String, help: String, warn: Bool) -> some View {
         Label(text, systemImage: symbol)
             .font(.callout.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(warn ? Color.orange : Color.secondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(.quaternary.opacity(0.5), in: Capsule())
