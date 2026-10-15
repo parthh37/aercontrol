@@ -1,0 +1,73 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+        shell: pwsh
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Unit tests (payload vectors, BLE session, settings)
+        if: matrix.platform == 'x64'
+        run: dotnet test AerControl.Portable.slnf -c Release
+
+      # Release tags can sign with a persistent cert from secrets (WINDOWS_CERT_PFX base64 +
+      # WINDOWS_CERT_PASSWORD). Otherwise a throwaway self-signed one is generated, and its
+      # .cer ships with the package so install.ps1 can trust it.
+      - name: Signing certificate
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          New-Item -ItemType Directory -Force certs | Out-Null
+          if ($env:WINDOWS_CERT_PFX) {
+            [IO.File]::WriteAllBytes("certs/AerControl-Dev.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+            $pfx = Get-PfxData -FilePath certs/AerControl-Dev.pfx -Password (ConvertTo-SecureString $env:WINDOWS_CERT_PASSWORD -AsPlainText -Force)
+            Export-Certificate -Cert $pfx.EndEntityCertificates[0] -FilePath certs/AerControl-Dev.cer | Out-Null
+            "CERT_PASSWORD=$env:WINDOWS_CERT_PASSWORD" >> $env:GITHUB_ENV
+          } else {
+            ./scripts/new-dev-cert.ps1 -Password "aercontrol-ci"
+            "CERT_PASSWORD=aercontrol-ci" >> $env:GITHUB_ENV
+          }
+
+      - name: Build MSIX + CLI
+        run: ./scripts/build-msix.ps1 -Platform ${{ matrix.platform }} -CertPassword $env:CERT_PASSWORD
+
+      - name: Zip
+        run: |
+          Compress-Archive -Path dist/AerControl_${{ matrix.platform }}/* -DestinationPath dist/AerControl-windows-${{ matrix.platform }}.zip
+          Compress-Archive -Path dist/aerctl_${{ matrix.platform }}/aerctl.exe -DestinationPath dist/aerctl-windows-${{ matrix.platform }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aercontrol-windows-${{ matrix.platform }}
+          path: windows/dist/*.zip
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: windows/dist/*.zip

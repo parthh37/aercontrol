@@ -1,0 +1,81 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      HAS_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' }}
+    defaults:
+      run:
+        working-directory: macos
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+
+      - name: Unit tests (payload vectors, settings, schedule)
+        run: swift test
+
+      - name: Build CLI + dev app (SwiftPM)
+        run: |
+          swift build -c release --product aerctl
+          ./scripts/bundle-dev-app.sh
+          cp .build/release/aerctl dist/aerctl
+          (cd dist && ditto -c -k --keepParent AerControl.app AerControl-dev.zip && zip aerctl-macos.zip aerctl)
+
+      - name: Build app + widget with Xcode (unsigned)
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec project.yml
+          xcodebuild -project AerControl.xcodeproj -scheme AerControl -configuration Release \
+            -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
+          test -d build/dd/Build/Products/Release/AerControl.app/Contents/PlugIns/AerControlWidget.appex
+
+      # Signed + notarized build when the repository has Apple credentials configured:
+      # MACOS_CERT_P12 (base64), MACOS_CERT_PASSWORD, APPLE_TEAM_ID, APPLE_ID, APPLE_APP_PASSWORD.
+      - name: Signed + notarized release
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_SIGNING == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          KC=build.keychain; KCPW=$(uuidgen)
+          security create-keychain -p "$KCPW" $KC
+          security set-keychain-settings $KC && security unlock-keychain -p "$KCPW" $KC
+          echo "$MACOS_CERT_P12" | base64 --decode > cert.p12
+          security import cert.p12 -k $KC -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPW" $KC
+          security list-keychains -d user -s $KC login.keychain
+          xcrun notarytool store-credentials aercontrol-notary --apple-id "$APPLE_ID" \
+            --team-id "$DEVELOPMENT_TEAM" --password "$APPLE_APP_PASSWORD"
+          ./scripts/release.sh
+          cp build/release/AerControl.dmg dist/AerControl.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aercontrol-macos
+          path: |
+            macos/dist/*.zip
+            macos/dist/*.dmg
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            macos/dist/*.zip
+            macos/dist/*.dmg

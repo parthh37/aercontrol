@@ -28,3 +28,7 @@ TestResults/
 *.apk
 *.xapk
 research/
+
+# Local signing certificates
+windows/certs/
+windows/dist/
