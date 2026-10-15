@@ -34,6 +34,10 @@ if ($ai) {
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
 $deps = Get-ChildItem -Path $here -Recurse -Filter *.msix |
         Where-Object { $_.FullName -match "\\Dependencies\\$arch\\" }
+# Release zips carry one architecture's runtime (e.g. the x64 zip on an ARM64 PC): use what's there.
+if (-not $deps) {
+  $deps = Get-ChildItem -Path $here -Recurse -Filter *.msix | Where-Object { $_.FullName -match "\\Dependencies\\" }
+}
 foreach ($d in $deps) {
   Write-Host "Installing dependency $($d.Name)"
   try { Add-AppxPackage -Path $d.FullName -ErrorAction Stop } catch { Write-Host "  (already installed or newer present)" }

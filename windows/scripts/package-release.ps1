@@ -5,7 +5,7 @@
     <P>-<dependency>.msix          Windows App Runtime framework package(s)
     AerControl-<P>.appinstaller    App Installer file: install + automatic updates
     AerControl-Dev.cer             signing certificate to trust
-    AerControl-windows-<P>.zip     everything above + install.ps1 (offline install)
+    AerControl-windows-<P>.zip     app msix, .appinstaller, .cer, install.ps1, Dependencies\<arch>\
     aerctl-windows-<P>.zip         CLI
 .NOTES
   The .appinstaller points at releases/latest/download/AerControl-<P>.appinstaller, so
@@ -71,8 +71,22 @@ Set-Content -Path $aiPath -Value $appInstaller -Encoding UTF8
 $cer = Get-ChildItem $dist -Filter *.cer | Select-Object -First 1
 if ($cer) { Copy-Item $cer.FullName (Join-Path $out "AerControl-Dev.cer") -Force }
 
-# Offline bundle: the original layout (install.ps1 finds deps under Dependencies\) + .appinstaller.
-Copy-Item $aiPath $dist -Force
-Compress-Archive -Path (Join-Path $dist "*") -DestinationPath (Join-Path $out "AerControl-windows-$Platform.zip") -Force
+# Offline bundle: only what install.ps1 needs for this platform. AppPackages ships the runtime for
+# every architecture plus symbols; keep the app msix at the top and this arch's deps under
+# Dependencies\<arch>\, the layout install.ps1 searches.
+$bundle = Join-Path $root "dist\bundle_$Platform"
+if (Test-Path $bundle) { Remove-Item -Recurse -Force $bundle }
+$bundleDeps = Join-Path $bundle "Dependencies\$arch"
+New-Item -ItemType Directory -Force -Path $bundleDeps | Out-Null
+Copy-Item $main.FullName (Join-Path $bundle $mainName)
+foreach ($d in $deps) { Copy-Item $d.FullName $bundleDeps }
+Copy-Item $aiPath $bundle
+if ($cer) { Copy-Item $cer.FullName (Join-Path $bundle "AerControl-Dev.cer") }
+Copy-Item (Join-Path $PSScriptRoot "install.ps1") $bundle
+$zipPath = Join-Path $out "AerControl-windows-$Platform.zip"
+Compress-Archive -Path (Join-Path $bundle "*") -DestinationPath $zipPath -Force
+$zip = [IO.Compression.ZipFile]::OpenRead($zipPath)
+try { $zip.Entries | ForEach-Object { Write-Host "  zip: $($_.FullName)  $([math]::Round($_.Length / 1MB, 1)) MB" } } finally { $zip.Dispose() }
+Get-ChildItem $dist -Recurse -File | ForEach-Object { Write-Host "  dist: $($_.FullName.Substring($dist.Length))  $([math]::Round($_.Length / 1MB, 1)) MB" }  # TEMP inventory
 Compress-Archive -Path (Join-Path $root "dist\aerctl_$Platform\aerctl.exe") -DestinationPath (Join-Path $out "aerctl-windows-$Platform.zip") -Force
 Get-ChildItem $out | ForEach-Object { Write-Host "  $($_.Name)  $([math]::Round($_.Length / 1MB, 1)) MB" }
