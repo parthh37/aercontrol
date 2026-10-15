@@ -74,8 +74,10 @@ struct ControlView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            UpdateBanner(services: model.services)
             header
                 .padding(20)
+                .onAppear { controller.refreshDeviceStatusIfOlder(than: 600) }
             Divider()
             HistoryList(controller: controller)
         }
@@ -95,6 +97,11 @@ struct ControlView: View {
                     LastSprayLine(record: last)
                 } else {
                     Text("No sprays yet").foregroundStyle(.secondary)
+                }
+                if controller.deviceStatus?.refillNeedsReset == true {
+                    Text("The device has counted more sprays than a can holds. Just put in a new can? Press “Reset refill…”.")
+                        .font(.callout).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let refillError {
                     Text(refillError).font(.callout).foregroundStyle(.red)
@@ -178,6 +185,26 @@ struct DeviceStatusChips: View {
             .padding(.vertical, 4)
             .background(.quaternary.opacity(0.5), in: Capsule())
             .help(help)
+    }
+}
+
+/// Shown above the Spray tab when a newer GitHub release exists.
+struct UpdateBanner: View {
+    @ObservedObject var services: BackgroundServices
+
+    var body: some View {
+        if let update = services.availableUpdate {
+            HStack {
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue)
+                Text("AerControl \(update.version) is available.")
+                Spacer()
+                Button("Release notes") { NSWorkspace.shared.open(update.pageURL) }
+                Button("Download") { services.openUpdate() }.buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .background(.blue.opacity(0.08))
+        }
     }
 }
 

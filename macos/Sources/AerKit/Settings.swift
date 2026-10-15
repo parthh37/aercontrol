@@ -54,6 +54,7 @@ public struct AerSettings: Codable, Equatable, Sendable {
     public var messageNumber: UInt32 = SprayPayload.capturedMessageNumber
     public var schedule = SpraySchedule()
     public var hotkeyEnabled = false
+    public var checkForUpdates = true
 
     public init() {}
 
@@ -72,6 +73,7 @@ public struct AerSettings: Codable, Equatable, Sendable {
         messageNumber = try c.decodeIfPresent(UInt32.self, forKey: .messageNumber) ?? d.messageNumber
         schedule = (try? c.decodeIfPresent(SpraySchedule.self, forKey: .schedule)) ?? d.schedule
         hotkeyEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotkeyEnabled) ?? d.hotkeyEnabled
+        checkForUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkForUpdates) ?? d.checkForUpdates
     }
 }
 

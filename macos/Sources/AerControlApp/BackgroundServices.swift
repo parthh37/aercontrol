@@ -12,6 +12,11 @@ final class BackgroundServices: ObservableObject {
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published private(set) var launchAtLoginError: String?
     @Published private(set) var nextScheduledSpray: Date?
+    @Published private(set) var availableUpdate: AppRelease?
+    @Published private(set) var updateCheckState: String?
+    @Published private(set) var isCheckingForUpdates = false
+
+    private static let lastUpdateCheckKey = "updates.lastCheck"
 
     private unowned let model: AppModel
     private var scheduleTimer: Timer?
@@ -50,6 +55,7 @@ final class BackgroundServices: ObservableObject {
         // The widget may have launched us through the URL fallback; pick up its request.
         handlePendingWidgetRequest()
         refreshStatusIfStale()
+        checkForUpdatesIfDue()
     }
 
     // MARK: Schedule
@@ -68,8 +74,45 @@ final class BackgroundServices: ObservableObject {
         Task { await c.refreshDeviceStatus() }
     }
 
+    // MARK: Updates
+
+    /// Once a day when enabled, plus on demand from Settings.
+    private func checkForUpdatesIfDue() {
+        guard model.controller.settings.checkForUpdates, !isCheckingForUpdates else { return }
+        let last = UserDefaults.standard.object(forKey: Self.lastUpdateCheckKey) as? Date
+        if let last, Date().timeIntervalSince(last) < 24 * 3600 { return }
+        Task { await checkForUpdates() }
+    }
+
+    func checkForUpdates() async {
+        isCheckingForUpdates = true
+        defer { isCheckingForUpdates = false }
+        let current = Bundle.main.shortVersion
+        do {
+            let release = try await UpdateChecker.latestRelease()
+            UserDefaults.standard.set(Date(), forKey: Self.lastUpdateCheckKey)
+            if UpdateChecker.isVersion(release.version, newerThan: current) {
+                availableUpdate = release
+                updateCheckState = "Version \(release.version) is available."
+                model.log.info("update available: \(release.version) (running \(current))")
+            } else {
+                availableUpdate = nil
+                updateCheckState = "You're up to date (\(current))."
+            }
+        } catch {
+            updateCheckState = "Couldn't check for updates: \(error.localizedDescription)"
+            model.log.warn("update check failed: \(error.localizedDescription)")
+        }
+    }
+
+    func openUpdate() {
+        guard let release = availableUpdate else { return }
+        NSWorkspace.shared.open(release.macDownloadURL)
+    }
+
     private func tickSchedule() {
         refreshStatusIfStale()
+        checkForUpdatesIfDue()
         let evaluator = ScheduleEvaluator(schedule: model.controller.settings.schedule)
         if evaluator.isDue(now: .now, lastScheduledSpray: lastScheduledSpray), !model.controller.isSpraying {
             model.log.info("scheduled spray due")
@@ -154,6 +197,11 @@ final class BackgroundServices: ObservableObject {
                 model.spray(.url)
             }
         default:
+            // aercontrol://open?tab=spray|devices|settings
+            if let tab = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "tab" })?.value.flatMap(MainTab.init(rawValue:)) {
+                model.selectedTab = tab
+            }
             model.showMainWindow?()
         }
     }

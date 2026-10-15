@@ -17,6 +17,20 @@ if ($cer) {
   }
 }
 
+# Preferred: install through the .appinstaller, so Windows keeps AerControl updated from
+# GitHub Releases on its own. Falls back to the bundled packages (offline install).
+$ai = Get-ChildItem -Path $here -Filter *.appinstaller -Recurse | Select-Object -First 1
+if ($ai) {
+  try {
+    Write-Host "Installing via App Installer (enables automatic updates)..."
+    Add-AppxPackage -AppInstallerFile $ai.FullName -ForceApplicationShutdown -ErrorAction Stop
+    Write-Host "Installed. Start AerControl from the Start menu; add the widget from the Widgets board (Win+W > +)."
+    return
+  } catch {
+    Write-Host "App Installer route failed ($($_.Exception.Message)); installing the bundled packages instead."
+  }
+}
+
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
 $deps = Get-ChildItem -Path $here -Recurse -Filter *.msix |
         Where-Object { $_.FullName -match "\\Dependencies\\$arch\\" }

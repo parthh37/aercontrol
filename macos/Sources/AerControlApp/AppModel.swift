@@ -19,6 +19,8 @@ final class AppModel: ObservableObject {
     private(set) lazy var services = BackgroundServices(model: self)
     /// Set by a SwiftUI view that has access to `openWindow`.
     var showMainWindow: (() -> Void)?
+    /// Selected tab of the main window; settable via aercontrol://open?tab=…
+    @Published var selectedTab: MainTab = .control
 
     private var cancellables: Set<AnyCancellable> = []
     private var flashTask: Task<Void, Never>?

@@ -7,6 +7,18 @@ Widgets Board on Windows 11).
 
 > Not affiliated with or endorsed by Godrej. Uses the device's local BLE protocol only.
 
+<p align="center">
+  <img src="docs/screenshots/macos-spray.png" width="640" alt="AerControl on macOS: Spray tab with battery, refill level and device-confirmed spray history">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/macos-devices.png" width="380" alt="Devices tab">
+  <img src="docs/screenshots/macos-settings.png" width="380" alt="Settings tab">
+</p>
+
+**Download:** [latest release](../../releases/latest): `AerControl-macOS.dmg`, or
+`AerControl-windows-x64.zip` / `-ARM64.zip`. The apps check for updates daily.
+
 | | macOS 14+ | Windows 10/11 |
 |---|---|---|
 | Scan, pick and remember a device (with RSSI) | ✅ peripheral UUID | ✅ BLE address |
@@ -21,6 +33,7 @@ Widgets Board on Windows 11).
 | Battery (voltage + estimated %) and refill level / sprays remaining | ✅ | ✅ |
 | Reset refill level after inserting a new can | ✅ | ✅ |
 | Device-confirmed sprays (`ack 200`) | ✅ | ✅ |
+| Update check (daily, GitHub Releases) | ✅ banner + menu bar | ✅ banner + tray notification, and App Installer auto-update |
 | Log file | `~/Library/Logs/AerControl/` (in the app container when sandboxed) | app LocalFolder `\logs` |
 
 ## Before you start
@@ -188,14 +201,47 @@ aerctl status
 * **Windows widget missing**: widgets need Windows 11 and the MSIX-installed app (not
   an unpackaged debug run).
 
+## Updates
+
+Both apps check this repository's latest GitHub release once a day (turn this off in
+*Settings › Updates*, or use **Check now**). When a newer version exists:
+
+* **macOS** shows a banner and a menu bar button that downloads the new DMG.
+* **Windows** shows a banner and a tray notification. Installs made with `install.ps1`
+  go through an `.appinstaller` file, so **Windows also updates AerControl by itself**
+  (checked at launch and in the background).
+
+## Releasing
+
+**Actions › Release › Run workflow**, then pick **patch**, **minor** or **major**
+(and optional notes). The workflow:
+
+1. bumps [`VERSION`](VERSION) and every platform manifest (`scripts/bump_version.py`),
+   commits `Release vX.Y.Z` and tags it,
+2. builds and tests macOS (DMG with the widget, CLI) and Windows x64 + ARM64 (signed
+   MSIX, `.appinstaller`, offline zip, CLI),
+3. publishes the GitHub release with generated notes. Installed apps pick it up
+   through their update check.
+
+One-time setup (repository secrets):
+
+| Secret | Purpose |
+|---|---|
+| `WINDOWS_CERT_PFX`, `WINDOWS_CERT_PASSWORD` | **Required for releases.** Persistent MSIX signing certificate (subject `CN=AerControl Dev`). Updates only install when every release is signed with the same certificate. |
+| `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_ID`, `APPLE_APP_PASSWORD` | Optional. With these, the DMG is Developer ID-signed and notarized; without them it's ad-hoc signed (right-click › Open on first launch). |
+
+Locally: `python3 scripts/bump_version.py minor` does the same version bump.
+
 ## Development
 
 ```bash
 make test            # Swift + .NET unit tests (the .NET ones run on macOS/Linux too)
 ```
 
-CI ([`.github/workflows`](.github/workflows)) builds and tests both platforms on
-every push and attaches release artifacts to `v*` tags.
+CI ([`.github/workflows`](.github/workflows)) builds and tests both platforms on every
+push. Releases go through the Release workflow above.
+
+Deep links (macOS): `aercontrol://spray`, `aercontrol://open?tab=spray|devices|settings`.
 
 ## License
 

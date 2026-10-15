@@ -101,6 +101,13 @@ public struct DeviceStatus: Codable, Equatable, Sendable {
 
     public var refillFraction: Double? { refillPercent.map { Double($0) / 100 } }
 
+    /// More sprays counted than a can holds: almost always a new can that was never
+    /// reset (the device only zeroes its counter on a refill-reset command).
+    public var refillNeedsReset: Bool {
+        guard let t = totalSprays, let c = refillCapacity else { return false }
+        return t > c
+    }
+
     /// "2.51 V" style.
     public var batteryVoltsText: String? {
         batteryMillivolts.map { String(format: "%.2f V", Double($0) / 1000) }

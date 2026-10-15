@@ -31,6 +31,8 @@ public sealed class AerSettings
     public uint MessageNumber { get; set; } = SprayPayload.CapturedMessageNumber;
     public SpraySchedule Schedule { get; set; } = new();
     public bool HotkeyEnabled { get; set; }
+    public bool CheckForUpdates { get; set; } = true;
+    public DateTimeOffset? LastUpdateCheck { get; set; }
 
     public AerSettings Clone() =>
         JsonSerializer.Deserialize<AerSettings>(JsonSerializer.Serialize(this, Json.Options), Json.Options)!;

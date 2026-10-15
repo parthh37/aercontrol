@@ -3,9 +3,18 @@ name: macOS
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build (the release tag)
+        type: string
+        default: ""
+      release_tag:
+        description: Upload installers to this GitHub release
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -15,16 +24,19 @@ jobs:
     runs-on: macos-15
     env:
       HAS_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' }}
+      GH_TOKEN: ${{ github.token }}
     defaults:
       run:
         working-directory: macos
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Select Xcode
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
 
-      - name: Unit tests (payload vectors, settings, schedule)
+      - name: Unit tests (payload/status vectors, settings, schedule, updates)
         run: swift test
 
       - name: Build CLI + dev app (SwiftPM)
@@ -32,20 +44,33 @@ jobs:
           swift build -c release --product aerctl
           ./scripts/bundle-dev-app.sh
           cp .build/release/aerctl dist/aerctl
-          (cd dist && ditto -c -k --keepParent AerControl.app AerControl-dev.zip && zip aerctl-macos.zip aerctl)
+          (cd dist && zip -q aerctl-macOS.zip aerctl)
 
-      - name: Build app + widget with Xcode (unsigned)
+      - name: Build app + widget with Xcode
         run: |
           brew install xcodegen
           xcodegen generate --spec project.yml
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            # Release without Apple credentials: ad-hoc signed ("Sign to Run Locally").
+            SIGN=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=)
+          else
+            SIGN=(CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY=)
+          fi
           xcodebuild -project AerControl.xcodeproj -scheme AerControl -configuration Release \
-            -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
+            -derivedDataPath build/dd "${SIGN[@]}" build
           test -d build/dd/Build/Products/Release/AerControl.app/Contents/PlugIns/AerControlWidget.appex
 
-      # Signed + notarized build when the repository has Apple credentials configured:
-      # MACOS_CERT_P12 (base64), MACOS_CERT_PASSWORD, APPLE_TEAM_ID, APPLE_ID, APPLE_APP_PASSWORD.
-      - name: Signed + notarized release
-        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_SIGNING == 'true'
+      - name: Package DMG (ad-hoc signed)
+        if: inputs.release_tag != '' && env.HAS_SIGNING != 'true'
+        run: |
+          mkdir -p build/dmg && cp -R build/dd/Build/Products/Release/AerControl.app build/dmg/
+          ln -s /Applications build/dmg/Applications
+          hdiutil create -volname AerControl -srcfolder build/dmg -ov -format UDZO dist/AerControl-macOS.dmg
+
+      # Signed + notarized when the repository has Apple credentials: MACOS_CERT_P12 (base64),
+      # MACOS_CERT_PASSWORD, APPLE_TEAM_ID, APPLE_ID, APPLE_APP_PASSWORD.
+      - name: Signed + notarized DMG
+        if: inputs.release_tag != '' && env.HAS_SIGNING == 'true'
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -63,7 +88,7 @@ jobs:
           xcrun notarytool store-credentials aercontrol-notary --apple-id "$APPLE_ID" \
             --team-id "$DEVELOPMENT_TEAM" --password "$APPLE_APP_PASSWORD"
           ./scripts/release.sh
-          cp build/release/AerControl.dmg dist/AerControl.dmg
+          cp build/release/AerControl.dmg dist/AerControl-macOS.dmg
 
       - uses: actions/upload-artifact@v4
         with:
@@ -72,10 +97,6 @@ jobs:
             macos/dist/*.zip
             macos/dist/*.dmg
 
-      - name: Attach to GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            macos/dist/*.zip
-            macos/dist/*.dmg
+      - name: Upload to release
+        if: inputs.release_tag != ''
+        run: gh release upload "${{ inputs.release_tag }}" dist/AerControl-macOS.dmg dist/aerctl-macOS.zip --clobber

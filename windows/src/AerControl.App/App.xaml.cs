@@ -32,6 +32,7 @@ public partial class App : Application
         Tray = new TrayIcon();
         _scheduler = new SprayScheduler(UI);
         SprayScheduler.RefreshStatusIfStale();
+        Updates.CheckIfDue();
         ApplyHotKey();
         _ = JumpListActions.InstallAsync();
 

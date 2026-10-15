@@ -63,6 +63,7 @@ struct DevicesView: View {
                 .padding(12)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 

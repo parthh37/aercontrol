@@ -49,6 +49,16 @@ struct MenuBarView: View {
                 }
             }
 
+            if let update = services.availableUpdate {
+                Button {
+                    services.openUpdate()
+                } label: {
+                    Label("Update to \(update.version)", systemImage: "arrow.down.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+
             Divider()
 
             HStack {
@@ -63,7 +73,7 @@ struct MenuBarView: View {
         }
         .padding(16)
         .frame(width: 280)
-        .onAppear { model.showMainWindow = { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) } }
+        .onAppear { controller.refreshDeviceStatusIfOlder(than: 600) }
     }
 }
 
@@ -104,6 +114,22 @@ struct ExtraSettingsSections: View {
             }
             Text("Shortcuts, Siri and Spotlight also offer “Spray Air Freshener” and “Get Air Freshener Status” actions.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+
+        Section("Updates") {
+            Toggle("Check for updates automatically (daily)", isOn: $controller.settings.checkForUpdates)
+            HStack {
+                Button("Check Now") { Task { await services.checkForUpdates() } }
+                    .disabled(services.isCheckingForUpdates)
+                if services.isCheckingForUpdates { ProgressView().controlSize(.small) }
+                if let update = services.availableUpdate {
+                    Button("Download \(update.version)") { services.openUpdate() }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+            if let state = services.updateCheckState {
+                Text(state).font(.caption).foregroundStyle(.secondary)
+            }
         }
 
         Section("General") {

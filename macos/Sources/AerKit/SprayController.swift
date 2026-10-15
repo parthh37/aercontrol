@@ -138,6 +138,13 @@ public final class SprayController: ObservableObject {
                            error: "Device rejected the spray (ack \(ack.acknowledgement ?? -1)).", reply: hex)
     }
 
+    /// Refreshes when the cached reading is older than `maxAge` (e.g. when a window opens).
+    public func refreshDeviceStatusIfOlder(than maxAge: TimeInterval) {
+        guard settings.deviceIdentifier != nil, !isSpraying else { return }
+        if let at = deviceStatus?.updatedAt, Date().timeIntervalSince(at) < maxAge { return }
+        Task { await refreshDeviceStatus() }
+    }
+
     /// Uses and advances the shared message counter, like a spray.
     private func nextMessageNumber() -> UInt32 {
         let mn = settings.messageNumber

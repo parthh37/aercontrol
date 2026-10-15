@@ -27,9 +27,15 @@ public sealed partial class SprayPage : Page
         Loaded += (_, _) =>
         {
             AppServices.Controller.Changed += OnChanged;
+            Updates.Changed += OnChanged;
+            AppServices.Controller.RefreshDeviceStatusIfOlder(TimeSpan.FromMinutes(10));
             Refresh();
         };
-        Unloaded += (_, _) => AppServices.Controller.Changed -= OnChanged;
+        Unloaded += (_, _) =>
+        {
+            AppServices.Controller.Changed -= OnChanged;
+            Updates.Changed -= OnChanged;
+        };
     }
 
     private void OnChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(Refresh);
@@ -56,6 +62,7 @@ public sealed partial class SprayPage : Page
         BatteryText.Text = c.DeviceStatus?.BatteryText ?? "—";
         RefillText.Text = c.DeviceStatus?.RefillText ?? "—";
         RefreshStatusButton.IsEnabled = hasDevice;
+        RefillHint.Visibility = c.DeviceStatus?.RefillNeedsReset == true ? Visibility.Visible : Visibility.Collapsed;
         ResetRefillButton.IsEnabled = hasDevice;
 
         var last = c.LastSpray;
@@ -72,6 +79,12 @@ public sealed partial class SprayPage : Page
         DisconnectButton.Visibility = status == LinkStatus.Connected ? Visibility.Visible : Visibility.Collapsed;
 
         HistoryList.ItemsSource = c.History.Select(r => new HistoryItem(r)).ToList();
+
+        if (Updates.Available is { } update)
+        {
+            UpdateBar.Message = $"AerControl {update.Version} is available (you have {Updates.CurrentVersion}).";
+            UpdateBar.IsOpen = true;
+        }
     }
 
     public static string Ago(DateTimeOffset date)
@@ -114,6 +127,8 @@ public sealed partial class SprayPage : Page
             ErrorText.Visibility = Visibility.Visible;
         }
     }
+
+    private async void OnDownloadUpdateClick(object sender, RoutedEventArgs e) => await Updates.OpenDownloadAsync();
 
     private async void OnRefreshStatusClick(object sender, RoutedEventArgs e)
     {

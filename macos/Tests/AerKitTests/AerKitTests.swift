@@ -85,3 +85,25 @@ import Testing
         #expect(r.writeMode == "without-response")
     }
 }
+
+@Suite struct UpdateCheckerTests {
+    @Test func comparesVersions() {
+        #expect(UpdateChecker.isVersion("v1.2.0", newerThan: "1.1.9"))
+        #expect(UpdateChecker.isVersion("2.0.0", newerThan: "1.99.99"))
+        #expect(UpdateChecker.isVersion("1.0.1", newerThan: "1.0.0-dev"))
+        #expect(!UpdateChecker.isVersion("1.0.0", newerThan: "1.0.0"))
+        #expect(!UpdateChecker.isVersion("1.2", newerThan: "1.2.0"))
+        #expect(!UpdateChecker.isVersion("v1.0.0", newerThan: "1.0.1"))
+    }
+
+    @Test func parsesGitHubReleaseJSON() throws {
+        let json = #"""
+        {"tag_name":"v1.3.0","html_url":"https://github.com/parthh37/aercontrol/releases/tag/v1.3.0","body":"notes",
+         "assets":[{"name":"AerControl-macOS.dmg","browser_download_url":"https://example.com/AerControl-macOS.dmg"},
+                   {"name":"AerControl-windows-x64.zip","browser_download_url":"https://example.com/w.zip"}]}
+        """#
+        let r = try UpdateChecker.parse(Data(json.utf8))
+        #expect(r.version == "1.3.0")
+        #expect(r.macDownloadURL.absoluteString == "https://example.com/AerControl-macOS.dmg")
+    }
+}

@@ -6,7 +6,8 @@ namespace AerControl.App.Pages;
 /// <summary>Phase 3 settings (schedule, hotkey, launch at login), built in code.</summary>
 public sealed partial class SettingsPage
 {
-    private ToggleSwitch? _scheduleSwitch, _hotkeySwitch, _loginSwitch;
+    private ToggleSwitch? _scheduleSwitch, _hotkeySwitch, _loginSwitch, _updatesSwitch;
+    private TextBlock? _updateState;
     private NumberBox? _intervalBox;
     private TimePicker? _startPicker, _endPicker;
     private TextBlock? _nextText, _hotkeyError, _loginNote;
@@ -20,6 +21,8 @@ public sealed partial class SettingsPage
         _startPicker!.Time = TimeSpan.FromMinutes(s.Schedule.Window.StartMinutes);
         _endPicker!.Time = TimeSpan.FromMinutes(s.Schedule.Window.EndMinutes);
         _hotkeySwitch!.IsOn = s.HotkeyEnabled;
+        _updatesSwitch!.IsOn = s.CheckForUpdates;
+        _updateState!.Text = Updates.State ?? $"Version {Updates.CurrentVersion}";
         _hotkeyError!.Visibility = s.HotkeyEnabled && App.HotKey is { IsRegistered: false } ? Visibility.Visible : Visibility.Collapsed;
         UpdateNext();
         _ = LoadLoginStateAsync();
@@ -53,6 +56,23 @@ public sealed partial class SettingsPage
         _hotkeyError = Note($"{GlobalHotKey.Display} is already used by another app.");
         _loginSwitch = new ToggleSwitch { Header = "Launch at login (starts in the tray)" };
         _loginNote = Note("");
+        _updatesSwitch = new ToggleSwitch { Header = "Check for updates automatically (daily)" };
+        _updateState = Note("");
+        var checkNow = new Button { Content = "Check now" };
+        var download = new Button { Content = "Download update", Visibility = Visibility.Collapsed };
+        _updatesSwitch.Toggled += async (_, _) => await Update(s => s.CheckForUpdates = _updatesSwitch.IsOn);
+        checkNow.Click += async (_, _) =>
+        {
+            checkNow.IsEnabled = false;
+            await Updates.CheckAsync(notify: false);
+            _updateState.Text = Updates.State ?? "";
+            download.Visibility = Updates.Available is null ? Visibility.Collapsed : Visibility.Visible;
+            checkNow.IsEnabled = true;
+        };
+        download.Click += async (_, _) => await Updates.OpenDownloadAsync();
+        var updateButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        updateButtons.Children.Add(checkNow);
+        updateButtons.Children.Add(download);
 
         _scheduleSwitch.Toggled += async (_, _) => { await Update(s => s.Schedule.Enabled = _scheduleSwitch.IsOn); UpdateNext(); };
         _intervalBox.ValueChanged += async (_, a) =>
@@ -91,6 +111,7 @@ public sealed partial class SettingsPage
                      Heading("Schedule"), _scheduleSwitch, _intervalBox, _startPicker, _endPicker, _nextText,
                      Heading("Shortcuts"), _hotkeySwitch, _hotkeyError,
                      Note("Right-click AerControl in the taskbar or Start menu for “Spray now”. Left-click the tray icon to spray."),
+                     Heading("Updates"), _updatesSwitch, updateButtons, _updateState,
                      Heading("General"), _loginSwitch, _loginNote,
                  })
             ExtraSettings.Children.Add(e);

@@ -18,7 +18,7 @@ cp "$BIN" "$APP/Contents/MacOS/AerControl"
 # falls back to com.aercontrol.shared (see AerShared.appGroupID).
 sed -e 's/$(EXECUTABLE_NAME)/AerControl/' \
     -e 's/$(PRODUCT_BUNDLE_IDENTIFIER)/com.aercontrol.app.dev/' \
-    -e 's/$(MARKETING_VERSION)/1.0.0-dev/' \
+    -e "s/\$(MARKETING_VERSION)/$(cat ../VERSION)/" \
     -e 's/$(CURRENT_PROJECT_VERSION)/1/' \
     -e 's/$(TeamIdentifierPrefix)//' \
     App/Info.plist > "$APP/Contents/Info.plist"

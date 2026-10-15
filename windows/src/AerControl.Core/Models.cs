@@ -69,6 +69,12 @@ public sealed record DeviceStatus
     };
 
     /// <summary>Below 2.8 V the vendor app warns; below 2.7 V it shows a danger icon.</summary>
+    /// <summary>
+    /// More sprays counted than a can holds: almost always a new can that was never reset
+    /// (the device zeroes its counter only on a refill-reset command).
+    /// </summary>
+    public bool RefillNeedsReset => TotalSprays is int t && RefillCapacity is int c && t > c;
+
     public bool BatteryLow => BatteryMillivolts is int mv && mv < Protocol.DeviceStatusReport.BatteryLowMillivolts;
     public string? BatteryVolts => BatteryMillivolts is int mv ? $"{mv / 1000.0:0.00} V" : null;
     public string BatteryText => BatteryVolts is string v ? (BatteryPercent is int p ? $"~{p}% · {v}" : v) : "—";

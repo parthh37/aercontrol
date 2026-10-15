@@ -10,7 +10,7 @@ struct AerControlApp: App {
         MenuBarExtra {
             MenuBarView(model: model)
         } label: {
-            Image(systemName: model.controller.isSpraying ? "aqi.high" : "aqi.medium")
+            MenuBarLabel(model: model)
         }
         .menuBarExtraStyle(.window)
 
@@ -22,14 +22,15 @@ struct AerControlApp: App {
     }
 }
 
-enum MainTab: Hashable { case control, devices, settings }
+enum MainTab: String, Hashable {
+    case control = "spray", devices, settings
+}
 
 struct MainView: View {
     @ObservedObject var model: AppModel
-    @State private var tab: MainTab = .control
 
     var body: some View {
-        TabView(selection: $tab) {
+        TabView(selection: $model.selectedTab) {
             ControlView(model: model)
                 .tabItem { Label("Spray", systemImage: "aqi.medium") }
                 .tag(MainTab.control)
@@ -42,7 +43,24 @@ struct MainView: View {
         }
         .padding(.top, 4)
         .onAppear {
-            if model.controller.settings.deviceIdentifier == nil { tab = .devices }
+            if model.controller.settings.deviceIdentifier == nil { model.selectedTab = .devices }
         }
+    }
+}
+
+/// The menu bar icon. It's always rendered, so it's where the `openWindow` action is
+/// captured for code that runs outside SwiftUI (URL handler, app delegate).
+struct MenuBarLabel: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Image(systemName: model.controller.isSpraying ? "aqi.high" : "aqi.medium")
+            .onAppear {
+                model.showMainWindow = {
+                    openWindow(id: "main")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
     }
 }

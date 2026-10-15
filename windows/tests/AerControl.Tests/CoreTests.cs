@@ -74,6 +74,29 @@ public class CoreTests
     public void ScanFilterMatching(ScanFilter filter, string? name, bool hasService, bool expected) =>
         Assert.Equal(expected, ScanMatcher.Passes(filter, ScanMatcher.DefaultNameFilter, name, hasService));
 
+    [Theory]
+    [InlineData("v1.2.0", "1.1.9", true)]
+    [InlineData("2.0.0", "1.99.99", true)]
+    [InlineData("1.0.1", "1.0.0.0", true)]
+    [InlineData("1.0.0", "1.0.0.0", false)]
+    [InlineData("1.2", "1.2.0", false)]
+    [InlineData("v1.0.0", "1.0.1", false)]
+    public void ComparesVersions(string candidate, string current, bool newer) =>
+        Assert.Equal(newer, UpdateChecker.IsNewer(candidate, current));
+
+    [Fact]
+    public void ParsesGitHubRelease()
+    {
+        var r = UpdateChecker.Parse("""
+            {"tag_name":"v1.3.0","html_url":"https://github.com/parthh37/aercontrol/releases/tag/v1.3.0","body":"n",
+             "assets":[{"name":"AerControl-x64.appinstaller","browser_download_url":"https://example.com/a.appinstaller"},
+                       {"name":"AerControl-windows-ARM64.zip","browser_download_url":"https://example.com/arm.zip"}]}
+            """);
+        Assert.Equal("1.3.0", r.Version);
+        Assert.Equal("https://example.com/a.appinstaller", r.WindowsDownloadUrl("x64").ToString());
+        Assert.Equal("https://example.com/arm.zip", r.WindowsDownloadUrl("ARM64").ToString());
+    }
+
     private static DateTime At(int h, int m) => new(2026, 10, 15, h, m, 0, DateTimeKind.Local);
 
     [Fact]

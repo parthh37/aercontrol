@@ -67,7 +67,7 @@ public sealed class TrayIcon : IDisposable
     }
 
     public void ShowNotification(string title, string message) =>
-        _icon.ShowNotification(title, message, NotificationIcon.Warning);
+        _icon.ShowNotification(title, message, NotificationIcon.Info);
 
     public void Dispose()
     {
@@ -108,6 +108,7 @@ public sealed class SprayScheduler
     private static void Tick()
     {
         var c = AppServices.Controller;
+        Updates.CheckIfDue();
         if (c.IsSpraying) return;
         RefreshStatusIfStale();
         if (new ScheduleEvaluator(c.Settings.Schedule).IsDue(DateTime.Now, LastScheduledSpray))

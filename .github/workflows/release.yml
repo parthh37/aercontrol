@@ -1,0 +1,97 @@
+name: Release
+
+# Actions › Release › Run workflow › pick major / minor / patch.
+# Bumps VERSION everywhere, commits + tags, builds macOS and Windows installers, and
+# publishes a GitHub release. Apps on users' machines pick it up via their update check.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      notes:
+        description: Extra release notes (optional; the changelog is auto-generated)
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Bump version
+        id: bump
+        run: |
+          v=$(python3 scripts/bump_version.py "${{ inputs.bump }}")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+
+      - name: Commit, tag, push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release ${{ steps.bump.outputs.tag }}"
+          git tag "${{ steps.bump.outputs.tag }}"
+          git push origin main "${{ steps.bump.outputs.tag }}"
+
+      - name: Draft release
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          cat > notes.md <<'MD'
+          ## Install
+
+          **macOS 14+**: download `AerControl-macOS.dmg`, drag AerControl to Applications. Unsigned
+          builds: right-click › Open the first time.
+
+          **Windows 10/11**: download `AerControl-windows-x64.zip` (or ARM64), extract, run
+          `install.ps1`. It installs through App Installer, so later releases update automatically.
+
+          **CLI**: `aerctl-macOS.zip`, `aerctl-windows-x64.zip`.
+          MD
+          if [ -n "$NOTES" ]; then printf '\n## Notes\n\n%s\n' "$NOTES" >> notes.md; fi
+          gh release create "${{ steps.bump.outputs.tag }}" --draft --title "AerControl ${{ steps.bump.outputs.tag }}" \
+            --notes-file notes.md --generate-notes --verify-tag
+
+  macos:
+    needs: version
+    uses: ./.github/workflows/macos.yml
+    with:
+      ref: ${{ needs.version.outputs.tag }}
+      release_tag: ${{ needs.version.outputs.tag }}
+    secrets: inherit
+
+  windows:
+    needs: version
+    uses: ./.github/workflows/windows.yml
+    with:
+      ref: ${{ needs.version.outputs.tag }}
+      release_tag: ${{ needs.version.outputs.tag }}
+    secrets: inherit
+
+  publish:
+    needs: [version, macos, windows]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publish release
+        run: gh release edit "${{ needs.version.outputs.tag }}" --repo "${{ github.repository }}" --draft=false --latest

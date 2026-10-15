@@ -52,6 +52,14 @@ public sealed class SprayController
     /// <summary>Battery / refill as last reported by the device (persisted across launches).</summary>
     public DeviceStatus? DeviceStatus { get; private set; }
 
+    /// <summary>Refreshes when the cached reading is older than <paramref name="maxAge"/> (e.g. a window opens).</summary>
+    public void RefreshDeviceStatusIfOlder(TimeSpan maxAge)
+    {
+        if (Settings.DeviceAddress is null || IsSpraying) return;
+        if (DeviceStatus is { } s && DateTimeOffset.Now - s.UpdatedAt < maxAge) return;
+        _ = RefreshDeviceStatusAsync();
+    }
+
     /// <summary>Uses and advances the shared message counter, like a spray.</summary>
     private uint NextMessageNumber()
     {
