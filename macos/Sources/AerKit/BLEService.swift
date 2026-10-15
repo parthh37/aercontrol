@@ -37,7 +37,7 @@ public enum BLEError: LocalizedError, Equatable {
         case .unsupported: "This Mac doesn't support Bluetooth Low Energy."
         case .noDeviceSelected: "No device selected. Scan and pick your aer first."
         case .deviceNotFound: "Device not found. Is it in range and powered?"
-        case .timeout(let step): "Timed out during \(step). Is the phone app still connected? The device allows only one connection."
+        case .timeout(let step): "Timed out during \(step). The aer accepts one connection at a time: is the phone app or another computer connected to it?"
         case .serviceNotFound: "The aer GATT service wasn't found on this device."
         case .characteristicNotFound: "The spray characteristic wasn't found on this device."
         case .writeFailed(let why): "Write failed: \(why)"
@@ -95,7 +95,11 @@ public final class BLEService: NSObject, ObservableObject {
 
     public var scanFilter: ScanFilter = .serviceOrName
     public var nameFilter = AerSettings.defaultNameFilter
-    public var idleDisconnectSeconds = 20 { didSet { scheduleIdleDisconnect() } }
+    public var idleDisconnectSeconds = 3 { didSet { scheduleIdleDisconnect() } }
+    /// How long a connect may stay pending. While another computer or the phone holds the
+    /// aer it doesn't advertise; CoreBluetooth's pending connect completes as soon as that
+    /// host lets go, so this is mostly time spent waiting for the device to become free.
+    public var connectTimeout: TimeInterval = 30
     public var autoReconnect = true
     public var writeMode: WriteMode = .automatic
     public private(set) var targetIdentifier: UUID?
@@ -283,7 +287,7 @@ public final class BLEService: NSObject, ObservableObject {
             log.info("connecting to \(p.name ?? id.uuidString)")
             central.connect(p)
             do {
-                try await connectWaiter.wait(timeout: 12, step: "connect")
+                try await connectWaiter.wait(timeout: connectTimeout, step: "connect")
             } catch {
                 central.cancelPeripheralConnection(p)
                 refreshStatus()

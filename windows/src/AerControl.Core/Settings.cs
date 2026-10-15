@@ -15,15 +15,18 @@ public sealed class SpraySchedule
 /// Persisted settings. Missing JSON properties keep these initializer defaults, so adding a
 /// setting never resets the others.
 /// </summary>
-public sealed class AerSettings
+public sealed class AerSettings : IJsonOnDeserializing, IJsonOnDeserialized
 {
     /// <summary>BLE address (Windows exposes it, unlike CoreBluetooth).</summary>
     public ulong? DeviceAddress { get; set; }
     public string? DeviceName { get; set; }
     public ScanFilter ScanFilter { get; set; } = ScanFilter.ServiceOrName;
     public string NameFilter { get; set; } = ScanMatcher.DefaultNameFilter;
-    /// <summary>0 = stay connected; otherwise disconnect so the phone app can connect.</summary>
-    public int IdleDisconnectSeconds { get; set; } = 20;
+    /// <summary>Seconds to hold the link after the last command; 0 = stay connected. The aer
+    /// accepts one connection at a time and stops advertising while connected, so a short
+    /// hold is what lets another computer (or the phone app) spray right after this one.</summary>
+    public int IdleDisconnectSeconds { get; set; } = DefaultIdleDisconnectSeconds;
+    public const int DefaultIdleDisconnectSeconds = 3;
     public bool AutoReconnect { get; set; } = true;
     public WriteMode WriteMode { get; set; } = WriteMode.Automatic;
     /// <summary>On by default as a safeguard (see protocol/README.md field notes).</summary>
@@ -33,6 +36,20 @@ public sealed class AerSettings
     public bool HotkeyEnabled { get; set; }
     public bool CheckForUpdates { get; set; } = true;
     public DateTimeOffset? LastUpdateCheck { get; set; }
+    /// <summary>Bumped when a changed default should reach settings saved by an older version.</summary>
+    public int Version { get; set; } = CurrentVersion;
+    public const int CurrentVersion = 2;
+
+    // Files written before Version existed have no such key; mark them v1 before reading.
+    void IJsonOnDeserializing.OnDeserializing() => Version = 1;
+
+    void IJsonOnDeserialized.OnDeserialized()
+    {
+        // v1 saved the old 20 s default, which locked other computers out after every spray.
+        // A value the user picked themselves is kept.
+        if (Version < 2 && IdleDisconnectSeconds == 20) IdleDisconnectSeconds = DefaultIdleDisconnectSeconds;
+        Version = CurrentVersion;
+    }
 
     public AerSettings Clone() =>
         JsonSerializer.Deserialize<AerSettings>(JsonSerializer.Serialize(this, Json.Options), Json.Options)!;

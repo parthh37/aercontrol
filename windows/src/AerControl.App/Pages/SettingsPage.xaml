@@ -9,11 +9,11 @@
 
             <TextBlock Text="Connection" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,4,0,0" />
             <NumberBox x:Name="IdleBox" Header="Disconnect when idle (seconds, 0 = stay connected)"
-                       Minimum="0" Maximum="3600" SmallChange="5" LargeChange="30"
+                       Minimum="0" Maximum="3600" SmallChange="1" LargeChange="10"
                        SpinButtonPlacementMode="Inline" ValueChanged="OnIdleChanged" />
             <TextBlock Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Text="The aer accepts one connection at a time. Disconnecting when idle lets the phone app connect." />
+                       Text="The aer accepts one connection at a time. A short hold (a few seconds) lets your other computers and the phone app spray right after this one." />
             <ToggleSwitch x:Name="AutoReconnectSwitch" Header="Auto-reconnect if the link drops while in use"
                           Toggled="OnAutoReconnectToggled" />
             <ComboBox x:Name="WriteModeBox" Header="Write type" Width="360" SelectionChanged="OnWriteModeChanged">

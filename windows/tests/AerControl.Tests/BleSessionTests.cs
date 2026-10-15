@@ -9,6 +9,8 @@ internal sealed class FakeLink : IBleLink
     public int Connects, Disconnects;
     public List<byte[]> Writes = new();
     public Exception? ConnectError;
+    /// <summary>This many connects fail as Unreachable first, like Windows while another host holds the aer.</summary>
+    public int BusyConnects;
     public bool HangOnConnect;
     public byte[]? AutoReply;
     /// <summary>Sent one notification at a time after each write (stray packets, MTU-sized chunks).</summary>
@@ -21,6 +23,7 @@ internal sealed class FakeLink : IBleLink
     {
         Connects++;
         if (HangOnConnect) await Task.Delay(Timeout.Infinite, ct);
+        if (Connects <= BusyConnects) throw new BleException(BleErrorKind.Unreachable);
         if (ConnectError is not null) throw ConnectError;
         IsConnected = true;
     }
@@ -72,6 +75,8 @@ public class BleSessionTests
             ExpectedReplyTimeout = TimeSpan.FromMilliseconds(500),
             IdleTimeout = TimeSpan.Zero,
             ReconnectBaseDelay = TimeSpan.FromMilliseconds(10),
+            BusyRetryDelay = TimeSpan.FromMilliseconds(10),
+            ConnectTimeout = TimeSpan.FromMilliseconds(500),
         };
         s.SelectDeviceAsync(device).GetAwaiter().GetResult();
         return (s, link, radio);
@@ -246,6 +251,53 @@ public class BleSessionTests
         await Task.Delay(200);
         Assert.Equal(1, link.Connects);
         Assert.Equal(LinkStatus.Disconnected, s.Status);
+    }
+
+    [Fact]
+    public async Task WaitsForDeviceHeldByAnotherHost()
+    {
+        var (s, link, _) = Make();
+        link.BusyConnects = 3;
+        await s.SendAsync([1]);
+        Assert.Equal(4, link.Connects);
+        Assert.Single(link.Writes);
+        Assert.Equal(LinkStatus.Connected, s.Status);
+    }
+
+    [Fact]
+    public async Task ReportsUnreachableWhenDeviceStaysBusy()
+    {
+        var (s, link, _) = Make();
+        link.ConnectError = new BleException(BleErrorKind.Unreachable);
+        s.ConnectTimeout = TimeSpan.FromMilliseconds(200);
+        var ex = await Assert.ThrowsAsync<BleException>(() => s.SendAsync([1]));
+        Assert.Equal(BleErrorKind.Unreachable, ex.Kind);
+        Assert.True(link.Connects > 1);
+        Assert.Equal(LinkStatus.Disconnected, s.Status);
+    }
+
+    [Fact]
+    public async Task DoesNotRetryNonBusyErrors()
+    {
+        var (s, link, _) = Make();
+        link.ConnectError = new BleException(BleErrorKind.CharacteristicNotFound);
+        await Assert.ThrowsAsync<BleException>(() => s.SendAsync([1]));
+        Assert.Equal(1, link.Connects);
+    }
+
+    [Fact]
+    public async Task FailedReconnectsDoNotKeepGrabbingTheDevice()
+    {
+        var (s, link, _) = Make();
+        s.IdleTimeout = TimeSpan.FromMilliseconds(200);
+        s.ConnectTimeout = TimeSpan.FromMilliseconds(100);
+        await s.SendAsync([1]);
+        link.ConnectError = new BleException(BleErrorKind.Unreachable);
+        link.Drop();
+        await Task.Delay(1500);
+        var settled = link.Connects;
+        await Task.Delay(800);
+        Assert.Equal(settled, link.Connects); // gave up once the in-use window passed
     }
 
     [Fact]
