@@ -87,6 +87,5 @@ $zipPath = Join-Path $out "AerControl-windows-$Platform.zip"
 Compress-Archive -Path (Join-Path $bundle "*") -DestinationPath $zipPath -Force
 $zip = [IO.Compression.ZipFile]::OpenRead($zipPath)
 try { $zip.Entries | ForEach-Object { Write-Host "  zip: $($_.FullName)  $([math]::Round($_.Length / 1MB, 1)) MB" } } finally { $zip.Dispose() }
-Get-ChildItem $dist -Recurse -File | ForEach-Object { Write-Host "  dist: $($_.FullName.Substring($dist.Length))  $([math]::Round($_.Length / 1MB, 1)) MB" }  # TEMP inventory
 Compress-Archive -Path (Join-Path $root "dist\aerctl_$Platform\aerctl.exe") -DestinationPath (Join-Path $out "aerctl-windows-$Platform.zip") -Force
 Get-ChildItem $out | ForEach-Object { Write-Host "  $($_.Name)  $([math]::Round($_.Length / 1MB, 1)) MB" }
