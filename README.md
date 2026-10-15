@@ -16,9 +16,18 @@ Widgets Board on Windows 11).
   <img src="docs/screenshots/macos-settings.png" width="380" alt="Settings tab">
 </p>
 
-**Download:** [latest release](../../releases/latest): `AerControl-macOS.dmg`, or
-`AerControl-windows-x64.zip` / `-ARM64.zip`. The apps check for updates daily.
-Step-by-step install guide: **[parthh37.github.io/aercontrol](https://parthh37.github.io/aercontrol/)**.
+## Download
+
+| Platform | Download |
+|---|---|
+| **Windows 10/11** (Intel/AMD) | [**AerControl-Setup-x64.exe**](https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-Setup-x64.exe) |
+| **Windows 11 on ARM** | [**AerControl-Setup-ARM64.exe**](https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-Setup-ARM64.exe) |
+| **macOS 14+** | [**AerControl-macOS.dmg**](https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-macOS.dmg) |
+| CLI (`aerctl`) | [Windows x64](https://github.com/parthh37/aercontrol/releases/latest/download/aerctl-windows-x64.zip) · [macOS](https://github.com/parthh37/aercontrol/releases/latest/download/aerctl-macOS.zip) |
+
+All files, including the offline Windows zips, are on the [latest release](../../releases/latest) page.
+The apps check for updates daily. Step-by-step install guide:
+**[parthh37.github.io/aercontrol](https://parthh37.github.io/aercontrol/)**.
 
 | | macOS 14+ | Windows 10/11 |
 |---|---|---|
@@ -103,12 +112,18 @@ permission.
 
 ### Install a release
 
-1. Download `AerControl-windows-x64.zip` (or `ARM64`) from
-   [Releases](../../releases) and extract it.
-2. Right-click `install.ps1` › *Run with PowerShell*. It trusts the bundled
-   self-signed certificate (one admin prompt), installs the Windows App Runtime
-   dependency, then installs AerControl.
+1. Download [**AerControl-Setup-x64.exe**](https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-Setup-x64.exe)
+   ([ARM64](https://github.com/parthh37/aercontrol/releases/latest/download/AerControl-Setup-ARM64.exe)) and run it.
+   SmartScreen may warn about an unrecognized app: **More info › Run anyway**.
+2. Approve the one admin prompt. It trusts AerControl's self-signed certificate.
+   Setup then installs the Windows App Runtime and AerControl, with automatic updates.
 3. Start **AerControl** from the Start menu. It lives in the system tray.
+
+Uninstall from **Settings › Apps** like any other app. If setup fails, the details are
+in `%LOCALAPPDATA%\AerControl\install.log`.
+
+Offline alternative: download `AerControl-windows-x64.zip` (or `ARM64`) from
+[Releases](../../releases), extract it, right-click `install.ps1` › *Run with PowerShell*.
 
 **Add the widget (Windows 11):** press **Win+W** › **+** (Add widgets) › **AerControl**
 › **aer Spray**.
@@ -123,6 +138,7 @@ cd windows
 .\scripts\new-dev-cert.ps1 -Trust      # once, elevated: creates + trusts CN=AerControl Dev
 .\scripts\build-msix.ps1               # -> windows\dist\AerControl_x64 (MSIX) and aerctl_x64
 .\dist\AerControl_x64\install.ps1
+.\scripts\build-installer.ps1             # optional: release\AerControl-Setup-x64.exe (needs Inno Setup 6.3+)
 ```
 
 To develop, open `windows\AerControl.sln` in Visual Studio and run
@@ -195,6 +211,11 @@ aerctl status
 
 * **"Timed out during connect"**: the phone app is probably connected. Close it, or
   turn Bluetooth off on the phone.
+* **Windows: "The aer GATT service wasn't found"**: close the phone app (the device
+  takes one connection at a time). If you paired *Smart Matic* in Windows Bluetooth
+  settings, remove it there; AerControl doesn't need pairing, and a paired device can
+  leave Windows with a stale service list. The log lists every service Windows saw
+  during each discovery round.
 * **Nothing sprays but no error**: check `aerctl probe` and the log. The device needs
   the notify subscription and the settle delay described above.
 * **macOS: "No Bluetooth access"**: go to System Settings › Privacy & Security ›
@@ -220,7 +241,7 @@ Both apps check this repository's latest GitHub release once a day (turn this of
 1. bumps [`VERSION`](VERSION) and every platform manifest (`scripts/bump_version.py`),
    commits `Release vX.Y.Z` and tags it,
 2. builds and tests macOS (DMG with the widget, CLI) and Windows x64 + ARM64 (signed
-   MSIX, `.appinstaller`, offline zip, CLI),
+   MSIX, `.appinstaller`, Inno Setup `.exe`, offline zip, CLI),
 3. publishes the GitHub release with generated notes. Installed apps pick it up
    through their update check.
 

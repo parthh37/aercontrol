@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Lets the windows-TFM projects build (not run) on macOS/Linux, e.g. for quick checks. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Company>AerControl</Company>
     <Product>AerControl</Product>
   </PropertyGroup>

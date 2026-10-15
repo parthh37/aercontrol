@@ -46,31 +46,98 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         _session = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId).AsTask(ct).ConfigureAwait(false);
         _session.MaintainConnection = true;
 
-        var services = await _device.GetGattServicesForUuidAsync(AerGatt.Service, BluetoothCacheMode.Uncached)
-            .AsTask(ct).ConfigureAwait(false);
-        if (services.Status == GattCommunicationStatus.Unreachable)
-            throw new BleException(BleErrorKind.Unreachable);
-        if (services.Status != GattCommunicationStatus.Success)
-            throw new BleException(BleErrorKind.Disconnected, $"service discovery: {services.Status}");
-        _service = services.Services.FirstOrDefault() ?? throw new BleException(BleErrorKind.ServiceNotFound);
-
-        var chars = await _service.GetCharacteristicsForUuidAsync(AerGatt.Characteristic, BluetoothCacheMode.Uncached)
-            .AsTask(ct).ConfigureAwait(false);
-        if (chars.Status != GattCommunicationStatus.Success)
-            throw new BleException(BleErrorKind.Disconnected, $"characteristic discovery: {chars.Status}");
-        _characteristic = chars.Characteristics.FirstOrDefault()
+        _service = await FindServiceAsync(_device, ct).ConfigureAwait(false);
+        _characteristic = await FindCharacteristicAsync(_service, AerGatt.Characteristic, ct).ConfigureAwait(false)
                           ?? throw new BleException(BleErrorKind.CharacteristicNotFound);
 
         log.Info($"characteristic properties: {_characteristic.CharacteristicProperties}");
 
         // Replies (spray ack, status) arrive on the RESPONSE characteristic. Notify stays on
         // for the command characteristic too, which was part of what made sprays reliable.
-        var responses = await _service.GetCharacteristicsForUuidAsync(AerGatt.Response, BluetoothCacheMode.Uncached)
-            .AsTask(ct).ConfigureAwait(false);
-        _response = responses.Status == GattCommunicationStatus.Success ? responses.Characteristics.FirstOrDefault() : null;
+        _response = await FindCharacteristicAsync(_service, AerGatt.Response, ct).ConfigureAwait(false);
         foreach (var c in new[] { _characteristic, _response })
             if (c is not null) await EnableNotificationsAsync(c, ct).ConfigureAwait(false);
         _connected = true;
+    }
+
+    private static readonly BluetoothCacheMode[] CacheModes = [BluetoothCacheMode.Uncached, BluetoothCacheMode.Cached];
+    private const int DiscoveryRounds = 4;
+
+    /// <summary>
+    /// Finds the aer service. A single uncached lookup isn't enough on Windows: right after
+    /// connecting it often returns Success with an empty list (the link is still coming up),
+    /// and some adapters only answer the full-table query, not the UUID-filtered one. So each
+    /// round tries filtered then full, uncached then cached, with a growing pause in between.
+    /// </summary>
+    private async Task<GattDeviceService> FindServiceAsync(BluetoothLEDevice device, CancellationToken ct)
+    {
+        var lastStatus = GattCommunicationStatus.Success;
+        for (int round = 1; round <= DiscoveryRounds; round++)
+        {
+            foreach (var mode in CacheModes)
+            {
+                var filtered = await device.GetGattServicesForUuidAsync(AerGatt.Service, mode).AsTask(ct).ConfigureAwait(false);
+                lastStatus = filtered.Status;
+                ThrowIfAccessDenied(filtered.Status);
+                if (filtered.Status == GattCommunicationStatus.Success && Pick(filtered.Services) is { } hit) return hit;
+
+                var all = await device.GetGattServicesAsync(mode).AsTask(ct).ConfigureAwait(false);
+                ThrowIfAccessDenied(all.Status);
+                if (all.Status != GattCommunicationStatus.Success)
+                {
+                    lastStatus = all.Status;
+                    log.Warn($"service discovery round {round} ({mode}): {all.Status}");
+                    continue;
+                }
+                log.Info($"service discovery round {round} ({mode}): " +
+                         (all.Services.Count == 0 ? "no services" : string.Join(", ", all.Services.Select(s => s.Uuid))));
+                if (Pick(all.Services) is { } found) return found;
+            }
+            if (round < DiscoveryRounds)
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * round), ct).ConfigureAwait(false);
+        }
+        if (lastStatus == GattCommunicationStatus.Unreachable) throw new BleException(BleErrorKind.Unreachable);
+        throw new BleException(BleErrorKind.ServiceNotFound);
+    }
+
+    /// <summary>Returns the aer service from a result list and disposes the rest, so stray
+    /// service handles don't keep the link open after we disconnect.</summary>
+    private static GattDeviceService? Pick(IReadOnlyList<GattDeviceService> services)
+    {
+        GattDeviceService? match = null;
+        foreach (var s in services)
+        {
+            if (match is null && s.Uuid == AerGatt.Service) match = s;
+            else s.Dispose();
+        }
+        return match;
+    }
+
+    private async Task<GattCharacteristic?> FindCharacteristicAsync(GattDeviceService service, Guid uuid, CancellationToken ct)
+    {
+        var lastStatus = GattCommunicationStatus.Success;
+        foreach (var mode in CacheModes)
+        {
+            var r = await service.GetCharacteristicsForUuidAsync(uuid, mode).AsTask(ct).ConfigureAwait(false);
+            lastStatus = r.Status;
+            ThrowIfAccessDenied(r.Status);
+            if (r.Status == GattCommunicationStatus.Success && r.Characteristics.Count > 0) return r.Characteristics[0];
+
+            var all = await service.GetCharacteristicsAsync(mode).AsTask(ct).ConfigureAwait(false);
+            if (all.Status == GattCommunicationStatus.Success && all.Characteristics.FirstOrDefault(c => c.Uuid == uuid) is { } c)
+                return c;
+        }
+        log.Warn($"characteristic {uuid} not found (last status {lastStatus})");
+        if (lastStatus == GattCommunicationStatus.Unreachable) throw new BleException(BleErrorKind.Unreachable);
+        return null;
+    }
+
+    private static void ThrowIfAccessDenied(GattCommunicationStatus status)
+    {
+        if (status == GattCommunicationStatus.AccessDenied)
+            throw new BleException(BleErrorKind.Disconnected,
+                "Windows denied Bluetooth access. Check Settings › Privacy & security › Other devices " +
+                "(\"Communicate with unpaired devices\") and that AerControl is allowed");
     }
 
     private async Task EnableNotificationsAsync(GattCharacteristic c, CancellationToken ct)
