@@ -45,6 +45,7 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         // letting Windows drop it as soon as no GATT operation is pending.
         _session = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId).AsTask(ct).ConfigureAwait(false);
         _session.MaintainConnection = true;
+        _session.MaxPduSizeChanged += OnMaxPduSizeChanged;
 
         _service = await FindServiceAsync(_device, ct).ConfigureAwait(false);
         _characteristic = await FindCharacteristicAsync(_service, AerGatt.Characteristic, ct).ConfigureAwait(false)
@@ -55,8 +56,11 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         // Replies (spray ack, status) arrive on the RESPONSE characteristic. Notify stays on
         // for the command characteristic too, which was part of what made sprays reliable.
         _response = await FindCharacteristicAsync(_service, AerGatt.Response, ct).ConfigureAwait(false);
+        if (_response is null) log.Warn("response characteristic not found; battery/refill status won't be readable");
+        else log.Info($"response characteristic properties: {_response.CharacteristicProperties}");
         foreach (var c in new[] { _characteristic, _response })
             if (c is not null) await EnableNotificationsAsync(c, ct).ConfigureAwait(false);
+        log.Info($"ATT MTU {_session.MaxPduSize}");
         _connected = true;
     }
 
@@ -140,17 +144,49 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
                 "(\"Communicate with unpaired devices\") and that AerControl is allowed");
     }
 
+    private const int NotifyAttempts = 3;
+
+    /// <summary>
+    /// Subscribes to <paramref name="c"/>. The handler goes on first and stays on even when
+    /// the CCCD write fails or the characteristic doesn't advertise Notify: CoreBluetooth hands
+    /// over every notification it receives, but WinRT only raises ValueChanged for handlers that
+    /// are attached, and on macOS the RESPONSE characteristic's notify setup errors while its
+    /// replies still arrive. The CCCD write is retried because, like service discovery, it can
+    /// fail while the link is still coming up.
+    /// </summary>
     private async Task EnableNotificationsAsync(GattCharacteristic c, CancellationToken ct)
     {
-        var props = c.CharacteristicProperties;
-        if (!props.HasFlag(GattCharacteristicProperties.Notify) && !props.HasFlag(GattCharacteristicProperties.Indicate)) return;
         c.ValueChanged += OnValueChanged;
+        var props = c.CharacteristicProperties;
+        if (!props.HasFlag(GattCharacteristicProperties.Notify) && !props.HasFlag(GattCharacteristicProperties.Indicate))
+        {
+            log.Info($"{c.Uuid} doesn't advertise notify ({props}); listening anyway");
+            return;
+        }
         var cccd = props.HasFlag(GattCharacteristicProperties.Notify)
             ? GattClientCharacteristicConfigurationDescriptorValue.Notify
             : GattClientCharacteristicConfigurationDescriptorValue.Indicate;
-        var status = await c.WriteClientCharacteristicConfigurationDescriptorAsync(cccd).AsTask(ct).ConfigureAwait(false);
-        if (status == GattCommunicationStatus.Success) log.Info($"notifications on for {c.Uuid}");
-        else log.Warn($"couldn't enable notifications on {c.Uuid}: {status}");
+        for (int attempt = 1; attempt <= NotifyAttempts; attempt++)
+        {
+            string why;
+            try
+            {
+                var r = await c.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(cccd).AsTask(ct).ConfigureAwait(false);
+                if (r.Status == GattCommunicationStatus.Success)
+                {
+                    log.Info($"notifications on for {c.Uuid}");
+                    return;
+                }
+                why = $"{r.Status}{(r.ProtocolError is byte e ? $" (ATT error 0x{e:X2})" : "")}";
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                why = ex.Message;
+            }
+            log.Warn($"couldn't enable notifications on {c.Uuid} (attempt {attempt}/{NotifyAttempts}): {why}");
+            if (attempt < NotifyAttempts) await Task.Delay(TimeSpan.FromMilliseconds(300 * attempt), ct).ConfigureAwait(false);
+        }
+        log.Info($"still listening on {c.Uuid} in case the device notifies anyway");
     }
 
     public async Task<string> WriteAsync(byte[] data, WriteMode mode, CancellationToken ct)
@@ -207,6 +243,7 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         if (_device is not null) _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
         if (_session is not null)
         {
+            _session.MaxPduSizeChanged -= OnMaxPduSizeChanged;
             _session.MaintainConnection = false;
             _session.Dispose();
         }
@@ -229,8 +266,14 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         }
     }
 
-    private void OnValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args) =>
-        NotificationReceived?.Invoke(this, args.CharacteristicValue.ToArray());
+    private void OnMaxPduSizeChanged(GattSession sender, object args) => log.Info($"ATT MTU now {sender.MaxPduSize}");
+
+    private void OnValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
+    {
+        var value = args.CharacteristicValue.ToArray();
+        log.Info($"notification on {sender.Uuid} ({value.Length}B)");
+        NotificationReceived?.Invoke(this, value);
+    }
 
     public void Dispose() => DisconnectAsync().GetAwaiter().GetResult();
 }

@@ -47,7 +47,7 @@ public sealed class BleSession : IDisposable
     private CancellationTokenSource? _reconnectCts;
     private int _reconnectAttempt;
     private DateTime _lastActivityUtc = DateTime.MinValue;
-    private TaskCompletionSource<byte[]>? _reply;
+    private ReplyCollector? _reply;
     private AdapterState _adapter = AdapterState.Unknown;
     private LinkStatus _status = LinkStatus.NoDevice;
     private bool _disposed;
@@ -73,6 +73,9 @@ public sealed class BleSession : IDisposable
     /// <summary>Listen window after a write. Also keeps a write-without-response from being
     /// dropped by an immediate disconnect (the first live test failed exactly that way).</summary>
     public TimeSpan ReplyWindow { get; set; } = TimeSpan.FromSeconds(1);
+    /// <summary>How long to wait when the caller names the reply it expects (status, refill).
+    /// The wait ends as soon as that reply arrives, so a long limit only costs time on failure.</summary>
+    public TimeSpan ExpectedReplyTimeout { get; set; } = TimeSpan.FromSeconds(4);
     public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(15);
     /// <summary>Base delay for reconnect backoff (doubles per attempt, capped at 60 s).</summary>
     public TimeSpan ReconnectBaseDelay { get; set; } = TimeSpan.FromSeconds(1);
@@ -93,21 +96,28 @@ public sealed class BleSession : IDisposable
 
     // ---- Sending ---------------------------------------------------------------------
 
-    public async Task<WriteOutcome> SendAsync(byte[] data, CancellationToken ct = default)
+    public Task<WriteOutcome> SendAsync(byte[] data, CancellationToken ct = default) => SendAsync(data, null, ct);
+
+    /// <param name="expectedReplyType">Reply mT to wait for (e.g. 157 for fetch status). Other
+    /// notifications are skipped, and a reply split over several notifications is reassembled.</param>
+    public async Task<WriteOutcome> SendAsync(byte[] data, int? expectedReplyType, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             await EnsureConnectedAsync(ct).ConfigureAwait(false);
-            var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Volatile.Write(ref _reply, tcs);
+            var collector = new ReplyCollector(expectedReplyType);
+            Volatile.Write(ref _reply, collector);
             var mode = await _link.WriteAsync(data, WriteMode, ct).ConfigureAwait(false);
             _log.Info($"wrote {data.Length}B ({mode}): {Protocol.Hex.ToHex(data)}");
 
-            byte[]? reply = null;
-            var first = await Task.WhenAny(tcs.Task, Task.Delay(ReplyWindow, ct)).ConfigureAwait(false);
-            if (first == tcs.Task && tcs.Task.IsCompletedSuccessfully) reply = tcs.Task.Result;
-            return new WriteOutcome(mode, reply);
+            var window = expectedReplyType is null || ExpectedReplyTimeout < ReplyWindow ? ReplyWindow : ExpectedReplyTimeout;
+            var first = await Task.WhenAny(collector.Reply, Task.Delay(window, ct)).ConfigureAwait(false);
+            if (first == collector.Reply && collector.Reply.IsCompletedSuccessfully)
+                return new WriteOutcome(mode, collector.Reply.Result);
+            if (expectedReplyType is not null && collector.Count > 0)
+                _log.Warn($"{collector.Count} notification(s) but no mT {expectedReplyType} reply within {window.TotalSeconds:0.#}s");
+            return new WriteOutcome(mode, collector.Fallback);
         }
         finally
         {
@@ -226,7 +236,7 @@ public sealed class BleSession : IDisposable
     private void OnConnectionLost(object? sender, string? why)
     {
         _log.Warn($"connection lost: {why ?? "no reason"}");
-        Volatile.Read(ref _reply)?.TrySetException(new BleException(BleErrorKind.Disconnected, why));
+        Volatile.Read(ref _reply)?.Fail(new BleException(BleErrorKind.Disconnected, why));
         StopIdleTimer();
         RefreshStatus();
         MaybeReconnect();
@@ -279,7 +289,7 @@ public sealed class BleSession : IDisposable
     private void OnNotification(object? sender, byte[] value)
     {
         _log.Info($"notify: {Protocol.Hex.ToHex(value)}");
-        Volatile.Read(ref _reply)?.TrySetResult(value);
+        Volatile.Read(ref _reply)?.Add(value);
         NotificationReceived?.Invoke(this, value);
     }
 
@@ -310,5 +320,49 @@ public sealed class BleSession : IDisposable
         CancelReconnect();
         StopIdleTimer();
         _link.Dispose();
+    }
+}
+
+/// <summary>
+/// Gathers the notifications that follow one write and picks the reply out of them. Taking
+/// the first notification works on macOS, but Windows can deliver a reply split over several
+/// 20-byte notifications (before the MTU exchange lands) or behind an unrelated notification.
+/// </summary>
+internal sealed class ReplyCollector(int? expectedType)
+{
+    private readonly List<byte[]> _chunks = new();
+    private readonly TaskCompletionSource<byte[]> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Completes with the first complete reply (of the expected type, if one was given).</summary>
+    public Task<byte[]> Reply => _tcs.Task;
+    public int Count { get { lock (_chunks) return _chunks.Count; } }
+    /// <summary>What to report when nothing decoded: the first raw notification, as before.</summary>
+    public byte[]? Fallback { get { lock (_chunks) return _chunks.FirstOrDefault(); } }
+
+    public void Add(byte[] value)
+    {
+        lock (_chunks)
+        {
+            _chunks.Add(value);
+            if (TryAssemble(_chunks, expectedType) is { } reply) _tcs.TrySetResult(reply);
+        }
+    }
+
+    public void Fail(Exception ex) => _tcs.TrySetException(ex);
+
+    /// <summary>
+    /// Tries the newest notification alone, then joined with the ones before it, and returns
+    /// the shortest run that decodes as an aer reply. Newest-first means an earlier stray or
+    /// truncated notification can't block a reply that arrives whole afterwards.
+    /// </summary>
+    internal static byte[]? TryAssemble(IReadOnlyList<byte[]> chunks, int? expectedType)
+    {
+        for (int start = chunks.Count - 1; start >= 0; start--)
+        {
+            var joined = chunks.Skip(start).SelectMany(c => c).ToArray();
+            if (Protocol.AerReply.Parse(joined) is { } r && (expectedType is null || r.MessageType == expectedType))
+                return joined;
+        }
+        return null;
     }
 }

@@ -80,7 +80,8 @@ public sealed class SprayController
     {
         try
         {
-            var outcome = await Session.SendAsync(AerCommands.FetchStatus(NextMessageNumber()), ct).ConfigureAwait(false);
+            var outcome = await Session.SendAsync(AerCommands.FetchStatus(NextMessageNumber()),
+                AerMessageType.FetchStatus.ResponseType(), ct).ConfigureAwait(false);
             if (outcome.Reply is not byte[] reply || DeviceStatusReport.Parse(reply) is not DeviceStatusReport r)
             {
                 Log.Warn($"status: no fetch-status reply (got {(outcome.Reply is null ? "nothing" : Hex.ToHex(outcome.Reply))})");
@@ -102,7 +103,8 @@ public sealed class SprayController
     /// <summary>Tells the device a fresh refill went in (mT 105, rR:true), resetting its counters.</summary>
     public async Task ResetRefillAsync(CancellationToken ct = default)
     {
-        var outcome = await Session.SendAsync(AerCommands.Refill(NextMessageNumber()), ct).ConfigureAwait(false);
+        var outcome = await Session.SendAsync(AerCommands.Refill(NextMessageNumber()),
+            AerMessageType.Refill.ResponseType(), ct).ConfigureAwait(false);
         if (outcome.Reply is byte[] b && AerReply.Parse(b) is { } reply
             && reply.MessageType == AerMessageType.Refill.ResponseType() && !reply.IsSuccess)
             throw new BleException(BleErrorKind.WriteFailed, $"device rejected the refill reset (ack {reply.Acknowledgement})");

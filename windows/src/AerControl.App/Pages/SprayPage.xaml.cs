@@ -120,6 +120,9 @@ public sealed partial class SprayPage : Page
         {
             await AppServices.Controller.Session.ConnectAsync();
             ErrorText.Visibility = Visibility.Collapsed;
+            // The window stays open (unlike the macOS menu, which re-reads on every open),
+            // so read battery/refill now that the link is up.
+            AppServices.Controller.RefreshDeviceStatusIfOlder(TimeSpan.FromMinutes(10));
         }
         catch (Exception ex)
         {
