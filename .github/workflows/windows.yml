@@ -71,6 +71,9 @@ jobs:
       - name: Release assets (msix, .appinstaller, zip)
         run: ./scripts/package-release.ps1 -Platform ${{ matrix.platform }} -Tag "${{ inputs.release_tag || 'v0.0.0-ci' }}"
 
+      - name: Setup .exe (Inno Setup)
+        run: ./scripts/build-installer.ps1 -Platform ${{ matrix.platform }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: aercontrol-windows-${{ matrix.platform }}

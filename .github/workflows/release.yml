@@ -62,8 +62,9 @@ jobs:
           **macOS 14+**: download `AerControl-macOS.dmg`, drag AerControl to Applications. Unsigned
           builds: right-click › Open the first time.
 
-          **Windows 10/11**: download `AerControl-windows-x64.zip` (or ARM64), extract, run
-          `install.ps1`. It installs through App Installer, so later releases update automatically.
+          **Windows 10/11**: download and run `AerControl-Setup-x64.exe` (or `AerControl-Setup-ARM64.exe`).
+          It installs through App Installer, so later releases update automatically. Offline
+          alternative: `AerControl-windows-x64.zip`, extract, run `install.ps1`.
 
           **CLI**: `aerctl-macOS.zip`, `aerctl-windows-x64.zip`.
           MD

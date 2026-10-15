@@ -3,17 +3,23 @@
   Installs AerControl from an extracted release folder: trusts the dev certificate
   (one UAC prompt), installs the Windows App Runtime dependency, then the app.
 #>
+param([string]$LogPath)   # set by the Inno Setup installer so failures can be diagnosed
 $ErrorActionPreference = "Stop"
 $here = $PSScriptRoot
+if ($LogPath) {
+  New-Item -ItemType Directory -Force -Path (Split-Path $LogPath) | Out-Null
+  Start-Transcript -Path $LogPath -Force | Out-Null
+}
 
 $cer = Get-ChildItem -Path $here -Filter *.cer -Recurse | Select-Object -First 1
 if ($cer) {
   $trusted = Get-ChildItem Cert:\LocalMachine\TrustedPeople | Where-Object { $_.Subject -eq "CN=AerControl Dev" }
   if (-not $trusted) {
     Write-Host "Trusting the AerControl signing certificate (administrator approval required)..."
-    Start-Process powershell -Verb RunAs -Wait -ArgumentList @(
+    $p = Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList @(
       "-NoProfile", "-Command",
       "Import-Certificate -FilePath '$($cer.FullName)' -CertStoreLocation Cert:\LocalMachine\TrustedPeople")
+    if ($p.ExitCode -ne 0) { throw "Couldn't trust the signing certificate (exit code $($p.ExitCode))." }
   }
 }
 
