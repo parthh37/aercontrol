@@ -48,8 +48,8 @@ public struct AerSettings: Codable, Equatable, Sendable {
     public var idleDisconnectSeconds = 20
     public var autoReconnect = true
     public var writeMode: WriteMode = .automatic
-    /// On by default: the first live test (mN=154) did nothing and the retry with mN=155
-    /// sprayed, which suggests the firmware ignores a repeated mN.
+    /// On by default as a safeguard. Live tests showed a reused mN is accepted; the real fix
+    /// for the first failed spray was the post-write settle and notify subscription.
     public var autoIncrementMessageNumber = true
     public var messageNumber: UInt32 = SprayPayload.capturedMessageNumber
     public var schedule = SpraySchedule()

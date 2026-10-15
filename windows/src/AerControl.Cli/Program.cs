@@ -158,7 +158,7 @@ switch (command)
         {
             if (mn is uint m) s.MessageNumber = m;
             s.WriteMode = mode.Value;
-            // mN auto-increments by default (the device appears to ignore a repeated mN).
+            // mN auto-increments by default as a safeguard (see protocol/README.md field notes).
             s.AutoIncrementMessageNumber = !flags.Contains("no-increment");
             s.IdleDisconnectSeconds = 0; // the CLI disconnects explicitly
         });

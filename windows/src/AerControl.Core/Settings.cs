@@ -26,7 +26,7 @@ public sealed class AerSettings
     public int IdleDisconnectSeconds { get; set; } = 20;
     public bool AutoReconnect { get; set; } = true;
     public WriteMode WriteMode { get; set; } = WriteMode.Automatic;
-    /// <summary>On by default: the device appears to ignore a repeated mN (see protocol notes).</summary>
+    /// <summary>On by default as a safeguard (see protocol/README.md field notes).</summary>
     public bool AutoIncrementMessageNumber { get; set; } = true;
     public uint MessageNumber { get; set; } = SprayPayload.CapturedMessageNumber;
     public SpraySchedule Schedule { get; set; } = new();

@@ -125,6 +125,8 @@ public final class BLEService: NSObject, ObservableObject {
     private let notifyStateWaiter = Waiter<Void>()
     private let replyWaiter = Waiter<Data>()
     private var replies: [Data] = []
+    private let readWaiter = Waiter<Data>()
+    private var readTarget: CBUUID?
 
     /// How long to listen for a notification after a write. It also acts as a settle time,
     /// so a write-without-response isn't dropped by a disconnect right behind it.
@@ -468,6 +470,48 @@ public final class BLEService: NSObject, ObservableObject {
         return lines
     }
 
+    /// One characteristic's value as read or notified during `probe`.
+    public struct ProbeEvent: Sendable {
+        public var characteristic: String
+        public var kind: String   // "read" or "notify"
+        public var value: Data
+    }
+
+    /// Diagnostics: reads every readable characteristic in the aer service, enables every
+    /// notify, then listens for `listen` seconds. Never writes to the device.
+    public func probe(listen: TimeInterval = 5) async throws -> [ProbeEvent] {
+        let (p, _) = try await ensureConnected()
+        guard let service = p.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
+            throw BLEError.serviceNotFound
+        }
+        p.discoverCharacteristics(nil, for: service)
+        try await characteristicsWaiter.wait(timeout: 8, step: "characteristic discovery")
+        var events: [ProbeEvent] = []
+        let previous = onNotification
+        probeSink = { uuid, value in events.append(ProbeEvent(characteristic: uuid, kind: "notify", value: value)) }
+        defer { probeSink = nil; onNotification = previous }
+
+        for c in service.characteristics ?? [] {
+            if c.properties.contains(.notify) && !c.isNotifying {
+                p.setNotifyValue(true, for: c)
+                try? await notifyStateWaiter.wait(timeout: 3, step: "enable notifications")
+            }
+        }
+        for c in service.characteristics ?? [] where c.properties.contains(.read) {
+            readTarget = c.uuid
+            p.readValue(for: c)
+            if let v = try? await readWaiter.wait(timeout: 3, step: "read \(c.uuid)") {
+                events.append(ProbeEvent(characteristic: c.uuid.uuidString, kind: "read", value: v))
+            }
+            readTarget = nil
+        }
+        try? await Task.sleep(for: .seconds(listen))
+        touch()
+        return events
+    }
+
+    private var probeSink: ((String, Data) -> Void)?
+
     private func failPendingOperations(_ error: Error) {
         connectWaiter.fail(error)
         servicesWaiter.fail(error)
@@ -595,6 +639,11 @@ extension BLEService: CBPeripheralDelegate {
                                        didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         MainActor.assumeIsolated {
             guard error == nil, let value = characteristic.value else { return }
+            if let target = readTarget, target == characteristic.uuid, readWaiter.isWaiting {
+                readWaiter.succeed(value)
+                return
+            }
+            probeSink?(characteristic.uuid.uuidString, value)
             let bytes = [UInt8](value)
             log.info("notify \(characteristic.uuid): \(bytes.hexString)  \(CBORDiagnostic.describe(bytes))")
             replies.append(value)

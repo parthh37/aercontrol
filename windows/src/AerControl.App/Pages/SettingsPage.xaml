@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AerControl.App.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel Padding="28,20,28,28" Spacing="8" MaxWidth="760" HorizontalAlignment="Left">
+
+            <TextBlock Text="Connection" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,4,0,0" />
+            <NumberBox x:Name="IdleBox" Header="Disconnect when idle (seconds, 0 = stay connected)"
+                       Minimum="0" Maximum="3600" SmallChange="5" LargeChange="30"
+                       SpinButtonPlacementMode="Inline" ValueChanged="OnIdleChanged" />
+            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="The aer accepts one connection at a time. Disconnecting when idle lets the phone app connect." />
+            <ToggleSwitch x:Name="AutoReconnectSwitch" Header="Auto-reconnect if the link drops while in use"
+                          Toggled="OnAutoReconnectToggled" />
+            <ComboBox x:Name="WriteModeBox" Header="Write type" Width="360" SelectionChanged="OnWriteModeChanged">
+                <x:String>Automatic (with response, then fallback)</x:String>
+                <x:String>With response only</x:String>
+                <x:String>Without response only</x:String>
+            </ComboBox>
+
+            <TextBlock Text="Payload" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,0" />
+            <ToggleSwitch x:Name="AutoIncrementSwitch" Header="Auto-increment mN after each spray"
+                          Toggled="OnAutoIncrementToggled" />
+            <NumberBox x:Name="MessageNumberBox" Header="Next mN" Minimum="0" Maximum="4294967295"
+                       SpinButtonPlacementMode="Inline" Width="200" HorizontalAlignment="Left"
+                       ValueChanged="OnMessageNumberChanged" />
+            <TextBlock x:Name="PayloadText" FontFamily="Consolas" IsTextSelectionEnabled="True"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <StackPanel x:Name="ExtraSettings" Spacing="8" />
+
+            <TextBlock Text="Diagnostics" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Open log folder" Click="OnOpenLogsClick" />
+                <TextBlock x:Name="VersionText" VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

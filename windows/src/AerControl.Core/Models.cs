@@ -44,6 +44,15 @@ public sealed record SprayRecord
     public string? Reply { get; init; }
 }
 
+/// <summary>Battery and refill level as last reported by the device.</summary>
+public sealed record DeviceStatus(int? BatteryPercent, int? SpraysRemaining, int? RefillCapacity, DateTimeOffset UpdatedAt)
+{
+    public double? RefillFraction =>
+        SpraysRemaining is int r && RefillCapacity is int c && c > 0 ? Math.Clamp((double)r / c, 0, 1) : null;
+    public string BatteryText => BatteryPercent is int b ? $"{b}%" : "—";
+    public string RefillText => SpraysRemaining is int r ? (RefillCapacity is int c ? $"{r}/{c}" : $"{r}") : "—";
+}
+
 public sealed record DiscoveredDevice(ulong Address, string Name, short Rssi, bool AdvertisesService, DateTimeOffset LastSeen)
 {
     public string AddressText => BluetoothAddress.Format(Address);

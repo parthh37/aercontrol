@@ -23,3 +23,8 @@ TestResults/
 *.cer
 *.mobileprovision
 *.provisionprofile
+
+# Vendor binaries used for protocol research: never commit
+*.apk
+*.xapk
+research/

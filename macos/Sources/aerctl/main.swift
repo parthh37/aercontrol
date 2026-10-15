@@ -13,6 +13,9 @@ commands:
                                    connect and send the spray payload
         [--raw HEX]                use HEX bytes instead of the CBOR payload
   inspect [--device UUID]          connect and list all GATT services/characteristics
+  probe [--device UUID] [--seconds N]
+                                   read every characteristic + listen to notifications
+                                   (never writes; for finding battery/refill data)
   remember <UUID>                  set the default device for `spray`
   forget                           clear the default device
   payload [--mn N]                 print the payload hex without sending
@@ -122,6 +125,30 @@ func run() async {
         try? await Task.sleep(for: .milliseconds(300))
         return
 
+    case "probe":
+        let controller = SprayController(defaults: defaults, log: log)
+        if let s = args.options["device"] {
+            guard let id = UUID(uuidString: s) else { fail("--device must be a peripheral UUID") }
+            controller.settings.deviceIdentifier = id
+        }
+        let seconds = args.options["seconds"].flatMap(Double.init) ?? 5
+        await waitForBluetooth(controller.ble)
+        do {
+            let events = try await controller.ble.probe(listen: seconds)
+            if events.isEmpty { print("no values read or notified") }
+            for e in events {
+                let bytes = [UInt8](e.value)
+                print("\(e.kind.padding(toLength: 6, withPad: " ", startingAt: 0)) \(e.characteristic.prefix(8))  \(bytes.hexString)")
+                print("       ascii: \(String(decoding: bytes.map { (32...126).contains($0) ? $0 : 46 }, as: UTF8.self))")
+                print("       cbor:  \(CBORDiagnostic.describe(bytes))")
+            }
+        } catch {
+            fail(error.localizedDescription)
+        }
+        controller.ble.disconnect(reason: "cli done")
+        try? await Task.sleep(for: .milliseconds(300))
+        return
+
     case "spray":
         let controller = SprayController(defaults: defaults, log: log)
         var raw: Data?
@@ -137,7 +164,7 @@ func run() async {
             guard let mn = UInt32(s) else { fail("--mn must be a non-negative integer") }
             controller.settings.messageNumber = mn
         }
-        // mN auto-increments by default (the device appears to ignore a repeated mN).
+        // mN auto-increments by default as a safeguard (see protocol/README.md field notes).
         controller.settings.autoIncrementMessageNumber = !args.flags.contains("no-increment")
         switch args.options["mode"] ?? "auto" {
         case "auto": controller.settings.writeMode = .automatic

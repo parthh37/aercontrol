@@ -42,6 +42,29 @@ public sealed class SprayController
     public SprayRecord? LastSpray { get { lock (_lock) return _history.FirstOrDefault(); } }
     public bool IsSpraying => Volatile.Read(ref _spraying) > 0;
 
+    /// <summary>Battery / refill as last reported (null until the status query is decoded).</summary>
+    public DeviceStatus? DeviceStatus { get; private set; }
+    public bool SupportsDeviceStatus => AerStatusProtocol.RequestPayload is not null;
+
+    /// <summary>Asks the device for battery / refill level. A no-op until the query is decoded.</summary>
+    public async Task RefreshDeviceStatusAsync(CancellationToken ct = default)
+    {
+        if (AerStatusProtocol.RequestPayload is not byte[] request) return;
+        try
+        {
+            var outcome = await Session.SendAsync(request, ct).ConfigureAwait(false);
+            if (outcome.Reply is byte[] reply && AerStatusProtocol.Parse(reply) is DeviceStatusFields f)
+            {
+                DeviceStatus = new DeviceStatus(f.BatteryPercent, f.SpraysRemaining, f.RefillCapacity, DateTimeOffset.Now);
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"status refresh failed: {ex.Message}");
+        }
+    }
+
     public async Task InitializeAsync()
     {
         await Session.InitializeAsync().ConfigureAwait(false);

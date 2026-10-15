@@ -32,8 +32,12 @@ Field notes from the first live test (2026-10-15, macOS):
 * Attempt 1: mN=154, no notify subscription, disconnect 2 ms after the write. **No spray.**
 * Attempt 2: mN=155, notifications enabled on `…0003`, 1 s settle before disconnect.
   **Sprayed.** The device sent no notification back.
-* Both clients therefore enable notifications, wait about 1 s after each write before they
-  allow a disconnect, and auto-increment `mN` by default.
+* Attempt 3 (GUI): mN=154 again (after 155), connection held open about 20 s. **Sprayed.**
+  So a lower or reused `mN` is accepted, and the failure in attempt 1 was the immediate
+  disconnect dropping the queued write and/or the missing notify subscription.
+* Both clients therefore enable notifications and wait about 1 s after each write before they
+  allow a disconnect. Auto-increment `mN` stays on by default as a cheap safeguard;
+  sending the *same* `mN` twice in a row hasn't been tested yet.
 
 ### Write strategy
 
@@ -74,8 +78,8 @@ ff                 break
 
 ### `mN` sequencing
 
-The captured payload uses `mN = 154`. Repeated identical payloads appear to be
-ignored, so **Auto-increment mN** is on by default. The client then sends the stored
+The captured payload uses `mN = 154`. Live testing showed a reused `mN` is accepted
+(see field notes). **Auto-increment mN** is still on by default as a safeguard. The client then sends the stored
 value and persists `next(mN)` after each successful write. Integers use the shortest
 CBOR encoding, so the payload length changes when `mN` crosses 23/24 or 255/256. See
 the test vectors.

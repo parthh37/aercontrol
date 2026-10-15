@@ -1,0 +1,12 @@
+{
+  "solution": {
+    "path": "AerControl.sln",
+    "projects": [
+      "src\\AerControl.Protocol\\AerControl.Protocol.csproj",
+      "src\\AerControl.Core\\AerControl.Core.csproj",
+      "src\\AerControl.Ble.Windows\\AerControl.Ble.Windows.csproj",
+      "src\\AerControl.Cli\\AerControl.Cli.csproj",
+      "tests\\AerControl.Tests\\AerControl.Tests.csproj"
+    ]
+  }
+}

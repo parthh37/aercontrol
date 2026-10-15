@@ -74,18 +74,42 @@ public struct SprayRecord: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// Battery and refill level, as last reported by the device.
+public struct DeviceStatus: Codable, Equatable, Sendable {
+    public var batteryPercent: Int?
+    public var spraysRemaining: Int?
+    public var refillCapacity: Int?
+    public var updatedAt: Date
+
+    public init(batteryPercent: Int? = nil, spraysRemaining: Int? = nil, refillCapacity: Int? = nil,
+                updatedAt: Date = .now) {
+        self.batteryPercent = batteryPercent
+        self.spraysRemaining = spraysRemaining
+        self.refillCapacity = refillCapacity
+        self.updatedAt = updatedAt
+    }
+
+    /// 0…1 refill level when both numbers are known.
+    public var refillFraction: Double? {
+        guard let r = spraysRemaining, let c = refillCapacity, c > 0 else { return nil }
+        return min(1, max(0, Double(r) / Double(c)))
+    }
+}
+
 /// What the widget renders. Written by the app on every state change that matters.
 public struct WidgetSnapshot: Codable, Sendable {
     public var deviceName: String?
     public var status: LinkStatus
     public var lastSpray: SprayRecord?
+    public var deviceStatus: DeviceStatus?
     public var updatedAt: Date
 
     public init(deviceName: String? = nil, status: LinkStatus = .noDevice,
-                lastSpray: SprayRecord? = nil, updatedAt: Date = .now) {
+                lastSpray: SprayRecord? = nil, deviceStatus: DeviceStatus? = nil, updatedAt: Date = .now) {
         self.deviceName = deviceName
         self.status = status
         self.lastSpray = lastSpray
+        self.deviceStatus = deviceStatus
         self.updatedAt = updatedAt
     }
 

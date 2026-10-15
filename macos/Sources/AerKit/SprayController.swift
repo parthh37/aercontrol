@@ -18,6 +18,9 @@ public final class SprayController: ObservableObject {
     }
     @Published public private(set) var history: [SprayRecord]
     @Published public private(set) var isSpraying = false
+    /// Battery / refill as last reported by the device (nil until the status query is decoded).
+    @Published public private(set) var deviceStatus: DeviceStatus?
+    public var supportsDeviceStatus: Bool { AerStatusProtocol.requestPayload != nil }
 
     public let ble: BLEService
     public let log: FileLogger
@@ -106,6 +109,21 @@ public final class SprayController: ObservableObject {
         return record
     }
 
+    /// Asks the device for battery / refill level. A no-op until the status query is decoded.
+    public func refreshDeviceStatus() async {
+        guard let request = AerStatusProtocol.requestPayload else { return }
+        do {
+            let outcome = try await ble.send(Data(request))
+            if let reply = outcome.reply, let f = AerStatusProtocol.parse([UInt8](reply)) {
+                deviceStatus = DeviceStatus(batteryPercent: f.batteryPercent, spraysRemaining: f.spraysRemaining,
+                                            refillCapacity: f.refillCapacity)
+                publishSnapshot(force: true)
+            }
+        } catch {
+            log.warn("status refresh failed: \(error.localizedDescription)")
+        }
+    }
+
     public func clearHistory() {
         history.removeAll()
         historyStore.save(history)
@@ -119,7 +137,8 @@ public final class SprayController: ObservableObject {
         guard force || status != lastPublishedStatus else { return }
         lastPublishedStatus = status
         AerShared.writeSnapshot(WidgetSnapshot(deviceName: settings.deviceName, status: status,
-                                               lastSpray: history.first, updatedAt: .now))
+                                               lastSpray: history.first, deviceStatus: deviceStatus,
+                                               updatedAt: .now))
         onSnapshotPublished?()
     }
 }
