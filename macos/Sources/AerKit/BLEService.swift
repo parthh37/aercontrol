@@ -136,6 +136,11 @@ public final class BLEService: NSObject, ObservableObject {
     /// How long to listen for a notification after a write. It also acts as a settle time,
     /// so a write-without-response isn't dropped by a disconnect right behind it.
     public var replyWindow: TimeInterval = 1.0
+    /// How long a fresh link must be up before the first write. A spray sent the moment the
+    /// aer wakes up is acked and counted but often doesn't fire; the second one, with the aer
+    /// awake, does. The vendor app never writes sooner than ~2.5 s after connecting.
+    public var postConnectSettle: TimeInterval = 2.0
+    private var readyAt = Date.distantPast
     /// Every notification from the device, for diagnostics.
     public var onNotification: ((Data) -> Void)?
 
@@ -321,10 +326,28 @@ public final class BLEService: NSObject, ObservableObject {
         }
         characteristic = c
         reconnectAttempt = 0
+        readyAt = .now
         connectedName = p.name
         status = .connected
-        log.info("ready: \(p.name ?? "?") characteristic properties=\(c.properties.debugName)")
+        log.info("ready: \(p.name ?? "?") characteristic properties=\(c.properties.debugName), "
+                 + "max write \(p.maximumWriteValueLength(for: .withoutResponse))B")
         return (p, c)
+    }
+
+    /// `ensureConnected`, then waits out `postConnectSettle` on a fresh link. Measured from when
+    /// the link came up, so a spray a few seconds after connecting doesn't wait at all. If the
+    /// link drops meanwhile, `ensureConnected` reconnects, which restarts the clock.
+    private func settledLink() async throws -> (CBPeripheral, CBCharacteristic) {
+        var link = try await ensureConnected()
+        for _ in 0..<3 {
+            let remaining = postConnectSettle - Date().timeIntervalSince(readyAt)
+            guard remaining > 0 else { break }
+            log.info("letting the aer wake up for \(Int(remaining * 1000)) ms before writing")
+            idleTask?.cancel() // a short idle hold mustn't drop the link mid-settle; send() re-arms it
+            try await Task.sleep(for: .seconds(remaining))
+            link = try await ensureConnected()
+        }
+        return link
     }
 
     /// Scans until the peripheral with `id` shows up. Used when CoreBluetooth's cache has
@@ -362,7 +385,7 @@ public final class BLEService: NSObject, ObservableObject {
 
     private func performSend(_ data: Data) async throws -> WriteOutcome {
         defer { touch() }
-        let (p, c) = try await ensureConnected()
+        let (p, c) = try await settledLink()
         let mode = try await write(data, to: c, on: p)
         let reply = await awaitReply()
         return WriteOutcome(mode: mode, reply: reply)
