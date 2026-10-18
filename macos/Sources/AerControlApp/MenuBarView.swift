@@ -33,6 +33,8 @@ struct MenuBarView: View {
             SprayButton(model: model, size: 112, trigger: .menuBar)
 
             DeviceStatusChips(status: controller.deviceStatus)
+            BatteryWarningLine(status: controller.deviceStatus, font: .caption)
+                .multilineTextAlignment(.center)
 
             VStack(spacing: 4) {
                 if let last = controller.lastSpray {

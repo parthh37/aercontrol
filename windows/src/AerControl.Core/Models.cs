@@ -68,14 +68,24 @@ public sealed record DeviceStatus
         FirmwareVersion = r.FirmwareVersion,
     };
 
-    /// <summary>Below 2.8 V the vendor app warns; below 2.7 V it shows a danger icon.</summary>
     /// <summary>
     /// More sprays counted than a can holds: almost always a new can that was never reset
     /// (the device zeroes its counter only on a refill-reset command).
     /// </summary>
     public bool RefillNeedsReset => TotalSprays is int t && RefillCapacity is int c && t > c;
 
+    /// <summary>Below 2.8 V the vendor app warns (a soft "low" state)…</summary>
     public bool BatteryLow => BatteryMillivolts is int mv && mv < Protocol.DeviceStatusReport.BatteryLowMillivolts;
+
+    /// <summary>
+    /// …and below 2.7 V it shows a danger icon and asks for new batteries. At ~2.5 V the
+    /// aer has acked and counted sprays that never fired.
+    /// </summary>
+    public bool BatteryCritical => BatteryMillivolts is int mv && mv < Protocol.DeviceStatusReport.BatteryCriticalMillivolts;
+
+    /// <summary>The replace-batteries hint; null at or above 2.7 V, or before the first reading.</summary>
+    public string? BatteryWarning => BatteryCritical ? $"Batteries low ({BatteryVolts}). Replace them: sprays may not fire." : null;
+
     public string? BatteryVolts => BatteryMillivolts is int mv ? $"{mv / 1000.0:0.00} V" : null;
     public string BatteryText => BatteryVolts is string v ? (BatteryPercent is int p ? $"~{p}% · {v}" : v) : "—";
     public string RefillText => RefillPercent is int p && SpraysRemaining is int r ? $"{p}% · {r} left" : "—";

@@ -64,6 +64,7 @@ public class StatusProtocolTests
 
             var status = DeviceStatus.From(s);
             Assert.True(status.BatteryLow);
+            Assert.True(status.BatteryCritical);
             Assert.Equal("2.51 V", status.BatteryVolts);
             Assert.Equal("0% · 0 left", status.RefillText);
         }
@@ -77,6 +78,26 @@ public class StatusProtocolTests
     [InlineData(5000, 0)]
     public void RefillPercentMatchesVendorFormula(int total, int percent) =>
         Assert.Equal(percent, new DeviceStatusReport(null, null, null, null, [total], [], []).RefillPercent);
+
+    [Theory]
+    [InlineData(2506, true, true)]   // the reading behind the 2026-10-18 misfires
+    [InlineData(2699, true, true)]
+    [InlineData(2700, true, false)]  // the vendor app's danger level is "below 2.7 V"
+    [InlineData(2799, true, false)]
+    [InlineData(2800, false, false)]
+    [InlineData(null, false, false)] // no reading yet
+    public void BatteryThresholdsMatchVendorApp(int? millivolts, bool low, bool critical)
+    {
+        var s = new DeviceStatus { BatteryMillivolts = millivolts };
+        Assert.Equal(low, s.BatteryLow);
+        Assert.Equal(critical, s.BatteryCritical);
+        Assert.Equal(critical, s.BatteryWarning is not null);
+    }
+
+    [Fact]
+    public void BatteryWarningNamesTheVoltage() =>
+        Assert.Equal("Batteries low (2.50 V). Replace them: sprays may not fire.",
+                     new DeviceStatus { BatteryMillivolts = 2500 }.BatteryWarning);
 
     [Fact]
     public void StatusParserRejectsOtherReplies()

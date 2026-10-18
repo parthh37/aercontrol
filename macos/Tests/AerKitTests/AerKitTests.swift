@@ -100,6 +100,34 @@ import Testing
     }
 }
 
+@Suite struct BatteryWarningTests {
+    @Test(arguments: [
+        (2506, true, true),    // the reading behind the 2026-10-18 misfires
+        (2699, true, true),
+        (2700, true, false),   // the vendor app's danger level is "below 2.7 V"
+        (2799, true, false),
+        (2800, false, false),
+    ])
+    func thresholdsMatchVendorApp(millivolts: Int, low: Bool, critical: Bool) {
+        let s = DeviceStatus(batteryMillivolts: millivolts)
+        #expect(s.batteryLow == low)
+        #expect(s.batteryCritical == critical)
+        #expect((s.batteryWarning != nil) == critical)
+    }
+
+    @Test func noReadingNoWarning() {
+        let s = DeviceStatus()
+        #expect(!s.batteryLow)
+        #expect(!s.batteryCritical)
+        #expect(s.batteryWarning == nil)
+    }
+
+    @Test func warningNamesTheVoltage() {
+        #expect(DeviceStatus(batteryMillivolts: 2500).batteryWarning
+                == "Batteries low (2.50 V). Replace them: sprays may not fire.")
+    }
+}
+
 @Suite struct UpdateCheckerTests {
     @Test func comparesVersions() {
         #expect(UpdateChecker.isVersion("v1.2.0", newerThan: "1.1.9"))

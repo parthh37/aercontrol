@@ -60,6 +60,12 @@ public sealed partial class SprayPage : Page
         StatusText.Text = status.Label();
         StatusDot.Fill = StatusBrush(status);
         BatteryText.Text = c.DeviceStatus?.BatteryText ?? "—";
+        // Orange for the vendor app's "low" (< 2.8 V), red for its "danger" (< 2.7 V).
+        if (c.DeviceStatus is { BatteryCritical: true }) BatteryText.Foreground = new SolidColorBrush(Colors.IndianRed);
+        else if (c.DeviceStatus is { BatteryLow: true }) BatteryText.Foreground = new SolidColorBrush(Colors.DarkOrange);
+        else BatteryText.ClearValue(TextBlock.ForegroundProperty);
+        BatteryHint.Text = c.DeviceStatus?.BatteryWarning ?? "";
+        BatteryHint.Visibility = c.DeviceStatus?.BatteryWarning is null ? Visibility.Collapsed : Visibility.Visible;
         RefillText.Text = c.DeviceStatus?.RefillText ?? "—";
         RefreshStatusButton.IsEnabled = hasDevice;
         RefillHint.Visibility = c.DeviceStatus?.RefillNeedsReset == true ? Visibility.Visible : Visibility.Collapsed;

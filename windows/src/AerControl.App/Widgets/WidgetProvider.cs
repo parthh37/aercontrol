@@ -144,6 +144,8 @@ public sealed class WidgetProvider : IWidgetProvider
             ["lastSpray"] = last is null ? "No sprays yet"
                 : $"{(last.Success ? "✓" : "⚠")} {Pages.SprayPage.Ago(last.Date)}",
             ["battery"] = c.DeviceStatus?.BatteryText ?? "—",
+            ["batteryColor"] = c.DeviceStatus?.BatteryCritical == true ? "Attention" : "Default",
+            ["batteryCritical"] = c.DeviceStatus?.BatteryCritical == true,
             ["refill"] = c.DeviceStatus?.RefillText ?? "—",
             ["canSpray"] = !_busy && c.Settings.DeviceAddress is not null,
         };
@@ -162,7 +164,8 @@ internal static class WidgetTemplates
       "body": [
         { "type": "TextBlock", "text": "${deviceName}", "weight": "Bolder", "size": "Medium", "wrap": false },
         { "type": "TextBlock", "text": "● ${status}", "color": "${statusColor}", "size": "Small", "spacing": "None" },
-        { "type": "TextBlock", "text": "${lastSpray}", "size": "Small", "isSubtle": true, "spacing": "Small" }
+        { "type": "TextBlock", "text": "${lastSpray}", "size": "Small", "isSubtle": true, "spacing": "Small" },
+        { "type": "TextBlock", "$when": "${batteryCritical}", "text": "⚠ Replace batteries", "color": "Attention", "size": "Small", "weight": "Bolder", "spacing": "Small" }
       ],
       "actions": [
         { "type": "Action.Execute", "title": "Spray", "verb": "spray", "style": "positive", "isEnabled": "${canSpray}" }
@@ -185,14 +188,15 @@ internal static class WidgetTemplates
               "items": [
                 { "type": "TextBlock", "text": "${deviceName}", "weight": "Bolder", "size": "Large", "wrap": false },
                 { "type": "TextBlock", "text": "● ${status}", "color": "${statusColor}", "spacing": "None" },
-                { "type": "TextBlock", "text": "Last spray: ${lastSpray}", "size": "Small", "isSubtle": true, "wrap": true }
+                { "type": "TextBlock", "text": "Last spray: ${lastSpray}", "size": "Small", "isSubtle": true, "wrap": true },
+                { "type": "TextBlock", "$when": "${batteryCritical}", "text": "⚠ Replace batteries: sprays may not fire", "color": "Attention", "size": "Small", "weight": "Bolder", "wrap": true }
               ]
             },
             {
               "type": "Column",
               "width": "auto",
               "items": [
-                { "type": "TextBlock", "text": "🔋 ${battery}", "horizontalAlignment": "Right" },
+                { "type": "TextBlock", "text": "🔋 ${battery}", "color": "${batteryColor}", "horizontalAlignment": "Right" },
                 { "type": "TextBlock", "text": "💧 ${refill}", "horizontalAlignment": "Right", "spacing": "Small" }
               ]
             }

@@ -29,7 +29,9 @@ struct GetStatusIntent: AppIntent {
         if let last = c.lastSpray {
             parts.append("last spray \(last.date.formatted(.relative(presentation: .named)))\(last.success ? "" : " (failed)")")
         }
-        if let b = c.deviceStatus?.batteryPercent { parts.append("battery \(b)%") }
+        if let b = c.deviceStatus?.batteryPercent {
+            parts.append("battery \(b)%\(c.deviceStatus?.batteryCritical == true ? " (low: replace the batteries)" : "")")
+        }
         if let r = c.deviceStatus?.spraysRemaining { parts.append("\(r) sprays left") }
         let text = parts.joined(separator: ", ")
         return .result(value: text, dialog: "\(text)")

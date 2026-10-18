@@ -1,4 +1,5 @@
 import Foundation
+import AerProtocol
 
 /// State shared between the main app and the widget extension through the App Group.
 /// This module never touches CoreBluetooth: the widget only reads state and posts requests.
@@ -113,8 +114,18 @@ public struct DeviceStatus: Codable, Equatable, Sendable {
         batteryMillivolts.map { String(format: "%.2f V", Double($0) / 1000) }
     }
 
-    /// Below 2.8 V the vendor app warns; below 2.7 V it shows a danger icon.
-    public var batteryLow: Bool { (batteryMillivolts ?? .max) < 2800 }
+    /// Below 2.8 V the vendor app warns (a soft "low" state)…
+    public var batteryLow: Bool { (batteryMillivolts ?? .max) < DeviceStatusReport.batteryLowMillivolts }
+
+    /// …and below 2.7 V it shows a danger icon and asks for new batteries. At ~2.5 V the
+    /// aer has acked and counted sprays that never fired.
+    public var batteryCritical: Bool { (batteryMillivolts ?? .max) < DeviceStatusReport.batteryCriticalMillivolts }
+
+    /// The replace-batteries hint; nil at or above 2.7 V, or before the first reading.
+    public var batteryWarning: String? {
+        guard batteryCritical, let v = batteryVoltsText else { return nil }
+        return "Batteries low (\(v)). Replace them: sprays may not fire."
+    }
 }
 
 /// What the widget renders. Written by the app on every state change that matters.
