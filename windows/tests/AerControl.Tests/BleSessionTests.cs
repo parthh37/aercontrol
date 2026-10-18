@@ -16,6 +16,21 @@ internal sealed class FakeLink : IBleLink
     /// <summary>Sent one notification at a time after each write (stray packets, MTU-sized chunks).</summary>
     public List<byte[]>? AutoNotifications;
     public int ConcurrentWrites, MaxConcurrentWrites;
+    public DateTime ConnectedAtUtc;
+    public List<DateTime> WriteTimesUtc = new();
+    public string Diagnostics => "fake link";
+    /// <summary>ATT MTU before / after the exchange, which lands <see cref="MtuExchangeAfter"/> after connecting.</summary>
+    public int MtuBefore = 23, MtuAfter = 247;
+    public TimeSpan MtuExchangeAfter = TimeSpan.Zero;
+    public int Mtu => DateTime.UtcNow - ConnectedAtUtc >= MtuExchangeAfter ? MtuAfter : MtuBefore;
+    public int MtuAtWrite;
+
+    public async Task<int> WaitForMtuExchangeAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (Mtu <= 23 && DateTime.UtcNow < deadline) await Task.Delay(10, ct);
+        return Mtu;
+    }
     public event EventHandler<string?>? ConnectionLost;
     public event EventHandler<byte[]>? NotificationReceived;
 
@@ -26,14 +41,16 @@ internal sealed class FakeLink : IBleLink
         if (Connects <= BusyConnects) throw new BleException(BleErrorKind.Unreachable);
         if (ConnectError is not null) throw ConnectError;
         IsConnected = true;
+        ConnectedAtUtc = DateTime.UtcNow;
     }
 
     public async Task<string> WriteAsync(byte[] data, WriteMode mode, CancellationToken ct)
     {
+        MtuAtWrite = Mtu;
         var now = Interlocked.Increment(ref ConcurrentWrites);
         MaxConcurrentWrites = Math.Max(MaxConcurrentWrites, now);
         await Task.Delay(20, ct);
-        lock (Writes) Writes.Add(data);
+        lock (Writes) { Writes.Add(data); WriteTimesUtc.Add(DateTime.UtcNow); }
         Interlocked.Decrement(ref ConcurrentWrites);
         if (AutoReply is not null) NotificationReceived?.Invoke(this, AutoReply);
         if (AutoNotifications is not null)
@@ -77,6 +94,9 @@ public class BleSessionTests
             ReconnectBaseDelay = TimeSpan.FromMilliseconds(10),
             BusyRetryDelay = TimeSpan.FromMilliseconds(10),
             ConnectTimeout = TimeSpan.FromMilliseconds(500),
+            PostConnectSettle = TimeSpan.Zero,
+            PostSprayQuiet = TimeSpan.Zero,
+            MtuExchangeTimeout = TimeSpan.FromMilliseconds(300),
         };
         s.SelectDeviceAsync(device).GetAwaiter().GetResult();
         return (s, link, radio);
@@ -237,8 +257,8 @@ public class BleSessionTests
         s.IdleTimeout = TimeSpan.Zero; // stay-connected mode: always reconnect
         await s.SendAsync([1]);
         link.Drop();
-        await WaitUntil(() => link.Connects == 2 && link.IsConnected, TimeSpan.FromSeconds(2));
-        Assert.Equal(LinkStatus.Connected, s.Status);
+        // The link reports connected a moment before the session publishes Connected.
+        await WaitUntil(() => link.Connects == 2 && s.Status == LinkStatus.Connected, TimeSpan.FromSeconds(2));
     }
 
     [Fact]
@@ -336,6 +356,100 @@ public class BleSessionTests
         Assert.Contains("unreachable", r.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(154u, c.Settings.MessageNumber);
         Directory.Delete(dir, true);
+    }
+
+    [Fact]
+    public async Task FirstWriteWaitsForFreshLinkToSettle()
+    {
+        var (s, link, _) = Make();
+        s.PostConnectSettle = TimeSpan.FromMilliseconds(300);
+        await s.SendAsync(new SprayPayload().Encode());
+        Assert.True(link.WriteTimesUtc[0] - link.ConnectedAtUtc >= TimeSpan.FromMilliseconds(280),
+                    $"wrote {(link.WriteTimesUtc[0] - link.ConnectedAtUtc).TotalMilliseconds:0} ms after connecting");
+    }
+
+    [Fact]
+    public async Task NoSettleOnceTheLinkHasBeenUpLongEnough()
+    {
+        var (s, link, _) = Make();
+        s.PostConnectSettle = TimeSpan.FromMilliseconds(300);
+        await s.ConnectAsync();
+        await Task.Delay(350);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await s.SendAsync([1]);
+        Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(250), $"send took {sw.ElapsedMilliseconds} ms");
+        Assert.Equal(1, link.Connects);
+    }
+
+    [Fact]
+    public async Task ReconnectsAndSettlesAgainIfTheLinkDropsWhileSettling()
+    {
+        var (s, link, _) = Make();
+        s.AutoReconnect = false;
+        s.PostConnectSettle = TimeSpan.FromMilliseconds(300);
+        var send = s.SendAsync([1]);
+        await WaitUntil(() => link.Connects == 1 && link.IsConnected, TimeSpan.FromSeconds(1));
+        link.Drop();
+        await send;
+        Assert.Equal(2, link.Connects);
+        Assert.Single(link.Writes);
+        Assert.True(link.WriteTimesUtc[0] - link.ConnectedAtUtc >= TimeSpan.FromMilliseconds(280));
+    }
+
+    [Fact]
+    public async Task StatusFetchWaitsForALateMtuExchange()
+    {
+        var (s, link, _) = Make();
+        link.MtuExchangeAfter = TimeSpan.FromMilliseconds(150);
+        s.MtuExchangeTimeout = TimeSpan.FromSeconds(2);
+        await s.SendAsync(AerCommands.FetchStatus(160), AerMessageType.FetchStatus.ResponseType());
+        Assert.Equal(247, link.MtuAtWrite);
+    }
+
+    [Fact]
+    public async Task SprayDoesNotWaitForTheMtuExchange()
+    {
+        var (s, link, _) = Make();
+        link.MtuExchangeAfter = TimeSpan.FromSeconds(5);
+        s.MtuExchangeTimeout = TimeSpan.FromSeconds(5);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await s.SendAsync(new SprayPayload().Encode());
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), $"spray took {sw.ElapsedMilliseconds} ms");
+        Assert.Equal(23, link.MtuAtWrite);
+    }
+
+    [Fact]
+    public async Task StatusFetchStillWritesWhenTheMtuNeverGrows()
+    {
+        var (s, link, _) = Make();
+        link.MtuExchangeAfter = TimeSpan.MaxValue;
+        s.MtuExchangeTimeout = TimeSpan.FromMilliseconds(100);
+        await s.SendAsync(AerCommands.FetchStatus(160), AerMessageType.FetchStatus.ResponseType());
+        Assert.Single(link.Writes);
+        Assert.Equal(23, link.MtuAtWrite);
+    }
+
+    [Fact]
+    public async Task CommandRightAfterASprayWaitsForTheSprayToFinish()
+    {
+        var (s, link, _) = Make();
+        s.PostSprayQuiet = TimeSpan.FromMilliseconds(300);
+        await s.SendAsync(new SprayPayload().Encode());
+        await s.SendAsync(AerCommands.FetchStatus(161), AerMessageType.FetchStatus.ResponseType());
+        Assert.True(link.WriteTimesUtc[1] - link.WriteTimesUtc[0] >= TimeSpan.FromMilliseconds(280),
+                    $"status went out {(link.WriteTimesUtc[1] - link.WriteTimesUtc[0]).TotalMilliseconds:0} ms after the spray");
+    }
+
+    [Fact]
+    public async Task OnlySpraysStartTheQuietWindow()
+    {
+        var (s, link, _) = Make();
+        s.PostSprayQuiet = TimeSpan.FromSeconds(5);
+        await s.SendAsync(AerCommands.FetchStatus(161), AerMessageType.FetchStatus.ResponseType());
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await s.SendAsync(new SprayPayload().Encode());
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), $"spray waited {sw.ElapsedMilliseconds} ms");
+        Assert.Equal(2, link.Writes.Count);
     }
 
     private static async Task WaitUntil(Func<bool> condition, TimeSpan timeout)

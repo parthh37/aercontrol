@@ -13,6 +13,12 @@ public interface IBleLink : IDisposable
     Task<string> WriteAsync(byte[] data, WriteMode mode, CancellationToken ct);
     Task DisconnectAsync();
     Task<IReadOnlyList<string>> DescribeGattAsync(CancellationToken ct);
+    /// <summary>One line for the log when an expected reply goes missing (MTU, subscriptions,
+    /// notifications seen since connecting).</summary>
+    string Diagnostics { get; }
+    /// <summary>Waits until the ATT MTU is above the default 23 (the platform finished its MTU
+    /// exchange) or <paramref name="timeout"/> passes; returns the MTU either way.</summary>
+    Task<int> WaitForMtuExchangeAsync(TimeSpan timeout, CancellationToken ct);
 }
 
 public interface IBleScanner
@@ -47,6 +53,8 @@ public sealed class BleSession : IDisposable
     private CancellationTokenSource? _reconnectCts;
     private int _reconnectAttempt;
     private DateTime _lastActivityUtc = DateTime.MinValue;
+    private DateTime _readyAtUtc = DateTime.MinValue;
+    private DateTime _lastSprayUtc = DateTime.MinValue;
     private ReplyCollector? _reply;
     private AdapterState _adapter = AdapterState.Unknown;
     private LinkStatus _status = LinkStatus.NoDevice;
@@ -84,6 +92,19 @@ public sealed class BleSession : IDisposable
     public TimeSpan BusyRetryDelay { get; set; } = TimeSpan.FromSeconds(1);
     /// <summary>Base delay for reconnect backoff (doubles per attempt, capped at 60 s).</summary>
     public TimeSpan ReconnectBaseDelay { get; set; } = TimeSpan.FromSeconds(1);
+    /// <summary>How long a fresh link must be up before the first write. Copies the vendor app,
+    /// which never writes sooner than ~2.5 s after connecting. A precaution: sprays that are acked
+    /// but don't fire weren't explained by timing (protocol/README.md, 2026-10-18).</summary>
+    public TimeSpan PostConnectSettle { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>How long after a spray no other command may be written. Copies the vendor app,
+    /// which never writes anything right after a spray. A precaution, like PostConnectSettle; it
+    /// also spaces out double-taps and scheduled sprays.</summary>
+    public TimeSpan PostSprayQuiet { get; set; } = TimeSpan.FromSeconds(3);
+    /// <summary>How long a command that expects a reply waits for the MTU exchange. The status
+    /// reply is 105 bytes, so at the default MTU (20-byte notifications) the aer never sends it;
+    /// only the 18-byte spray ack fits. Windows negotiates the MTU on its own schedule.</summary>
+    public TimeSpan MtuExchangeTimeout { get; set; } = TimeSpan.FromSeconds(3);
+    public const int DefaultAttMtu = 23;
 
     public async Task InitializeAsync()
     {
@@ -111,17 +132,27 @@ public sealed class BleSession : IDisposable
         try
         {
             await EnsureConnectedAsync(ct).ConfigureAwait(false);
+            await WaitUntilWritableAsync(ct).ConfigureAwait(false);
+            if (expectedReplyType is not null)
+            {
+                var mtu = await _link.WaitForMtuExchangeAsync(MtuExchangeTimeout, ct).ConfigureAwait(false);
+                if (mtu <= DefaultAttMtu)
+                    _log.Warn($"ATT MTU still {mtu}: the aer's replies to this command (status is 105 B) " +
+                              $"don't fit in {mtu - 3}-byte notifications, so it may not send them");
+            }
             var collector = new ReplyCollector(expectedReplyType);
             Volatile.Write(ref _reply, collector);
             var mode = await _link.WriteAsync(data, WriteMode, ct).ConfigureAwait(false);
+            if (IsSpray(data)) _lastSprayUtc = DateTime.UtcNow;
             _log.Info($"wrote {data.Length}B ({mode}): {Protocol.Hex.ToHex(data)}");
 
             var window = expectedReplyType is null || ExpectedReplyTimeout < ReplyWindow ? ReplyWindow : ExpectedReplyTimeout;
             var first = await Task.WhenAny(collector.Reply, Task.Delay(window, ct)).ConfigureAwait(false);
             if (first == collector.Reply && collector.Reply.IsCompletedSuccessfully)
                 return new WriteOutcome(mode, collector.Reply.Result);
-            if (expectedReplyType is not null && collector.Count > 0)
-                _log.Warn($"{collector.Count} notification(s) but no mT {expectedReplyType} reply within {window.TotalSeconds:0.#}s");
+            if (expectedReplyType is not null)
+                _log.Warn($"no mT {expectedReplyType} reply within {window.TotalSeconds:0.#}s " +
+                          $"({collector.Count} notification(s) for this write; {_link.Diagnostics})");
             return new WriteOutcome(mode, collector.Fallback);
         }
         finally
@@ -201,9 +232,36 @@ public sealed class BleSession : IDisposable
             }
         }
         _reconnectAttempt = 0;
+        _readyAtUtc = DateTime.UtcNow;
         _log.Info("connected and ready");
         SetStatus(LinkStatus.Connected);
     }
+
+    /// <summary>
+    /// Waits until a write is safe: <see cref="PostConnectSettle"/> after the link came up and
+    /// <see cref="PostSprayQuiet"/> after the last spray. Both are measured from those moments,
+    /// so a command long after either doesn't wait. If the link drops meanwhile it reconnects,
+    /// which restarts the settle clock.
+    /// </summary>
+    private async Task WaitUntilWritableAsync(CancellationToken ct)
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            var now = DateTime.UtcNow;
+            var settle = PostConnectSettle - (now - _readyAtUtc);
+            var quiet = PostSprayQuiet - (now - _lastSprayUtc);
+            var remaining = settle > quiet ? settle : quiet;
+            if (remaining <= TimeSpan.Zero) return;
+            _log.Info(quiet >= settle
+                ? $"waiting {remaining.TotalMilliseconds:0} ms for the spray to finish before writing"
+                : $"letting the aer wake up for {remaining.TotalMilliseconds:0} ms before writing");
+            await Task.Delay(remaining, ct).ConfigureAwait(false);
+            await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        }
+    }
+
+    private static bool IsSpray(byte[] data) =>
+        Protocol.AerReply.Parse(data)?.MessageType == (int)Protocol.AerMessageType.SprayNow;
 
     private static async Task<bool> PauseAsync(TimeSpan delay, CancellationToken ct)
     {

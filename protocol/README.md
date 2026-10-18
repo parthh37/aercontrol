@@ -49,6 +49,48 @@ Field notes from the first live test (2026-10-15, macOS):
   allow a disconnect. Auto-increment `mN` stays on by default as a cheap safeguard;
   sending the *same* `mN` twice in a row hasn't been tested yet.
 
+Later findings (2026-10-18):
+
+* **Sprays are sometimes acked and counted but don't fire.** The aer replies
+  `{mT:154, ack:200}` and `sn[0]` goes up, but nothing comes out. The aer's own button
+  still sprays. Live results on 2026-10-18 (local time, all `rI:0`):
+
+  | Time  | Sent by       | Wait after connect | Command right behind | Fired? |
+  |-------|---------------|--------------------|----------------------|--------|
+  | 05:35 | 1.4.0 app ×4  | none               | fetch status ~100 ms | 0 of 4 |
+  | 05:42 | CLI `--raw` ×2 | 2 s               | none                 | 2 of 2 |
+  | 05:49 | CLI `--raw` ×1 | none              | none                 | 0 of 1 |
+  | 05:54 | 1.4.0 app ×4  | none               | fetch status ~100 ms | 4 of 4 |
+
+  The same app and timing went from 0/4 to 4/4, so timing doesn't explain it. `mN` (131,
+  132, 154) doesn't matter, and the status fields (`cS` 0, `bV` ~2500, counters) were the
+  same in failing and working runs. Prime suspect: **low battery**. `bV` has read ~2.50 V
+  since 2026-10-15, below the vendor's 2.7 V danger level, and the vendor app warns *"change
+  your batteries to ensure uninterrupted freshness"*. BLE needs little current, so acks
+  keep coming while the motor fails on and off. Not yet confirmed with fresh batteries.
+* **Timing precautions.** The clients copy the vendor app's timing anyway: they wait until a
+  fresh link has been up for 2 s before writing (`postConnectSettle` / `PostConnectSettle`),
+  and write nothing for 3 s after a spray (`postSprayQuiet` / `PostSprayQuiet`). The table
+  above doesn't show that either one is needed.
+* **The vendor app (v2.4) never writes right after connecting.** On connect it waits 2 s,
+  discovers characteristics, subscribes, and requests **MTU 185**. It gets the unique id
+  after 4 s, fetches status after 3 s and sets the time after 6 s. Its BLE library delays
+  *every* write by 500 ms and always uses write-without-response.
+* **The vendor app never writes a CCCD.** It only calls Android's local
+  `setCharacteristicNotification(RESPONSE, true)`. `6E400001` has no CCCD at all: descriptor
+  discovery returns ATT 0x0A, which macOS reports as "The attribute could not be found". The
+  firmware notifies on it anyway. CoreBluetooth, Android and Windows all deliver those
+  notifications: Windows sprays show as confirmed even though the CCCD write fails there too.
+* **Status replies need a large MTU.** The spray ack is 18 bytes and fits the default ATT MTU
+  of 23 (20-byte notifications). The fetch-status reply is 105 bytes, needs an MTU of at least
+  108, and comes back whole only after an MTU exchange. That's why the vendor app requests 185.
+  WinRT can't request an MTU, because Windows negotiates it itself, so the Windows client waits up
+  to 3 s for that exchange before it sends fetch status. It logs a warning if the MTU is still 23.
+  The leading explanation for missing battery and refill on Windows (v1.4.0 and earlier) is
+  that fetch status went out right after connecting, before the exchange.
+* **Reads don't return replies.** Every characteristic in the aer service reads `00 00`.
+  Replies exist only as notifications, so polling by read isn't a workaround.
+
 ### Write strategy
 
 1. If the characteristic advertises **Write** (with response), write with response and wait
@@ -95,7 +137,7 @@ Request: `bf 62 6d 54 18 6b 62 6d 4e <mN> ff`. Reply captured from fw 3.0.6-T1:
 {_ "mT": 157, "mN": 160, "ack": 200,
    "bV": 2506,                  battery, millivolts
    "fV": "3.0.6-T1",            firmware
-   "cS": 133,                   current status (bit field, undocumented)
+   "cS": 133,                   auto-spray state: 111 or 0 = off, 112/121/131 = 10 min, 113/122/132 = 20, 114/123/133 = 40
    "sC": {"sn": [65, 0, 0, 65],     spray-now count per interval slot 0/10/20/40 min
           "sc": [2330, 263, 0],     scheduled sprays per interval 10/20/40
           "bn": [17, 88, 4]},       device-button presses per interval 10/20/40
@@ -136,7 +178,7 @@ ff                 break
 |------|----------------------------------------------|-------|
 | `mT` | message type; 104 = spray now                | 104   |
 | `mN` | message number / sequence                    | 154 in capture |
-| `rI` | request index / reserved                     | 0     |
+| `rI` | repeat interval in minutes: 0 = spray once; 10/20/40 = auto-spray mode (the vendor app's on/off switch and interval button send these) | 0 |
 
 ### `mN` sequencing
 

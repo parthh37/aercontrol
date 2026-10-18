@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices.WindowsRuntime;
 using AerControl.Core;
 using AerControl.Protocol;
@@ -28,15 +29,53 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
     private GattCharacteristic? _response;
     private volatile bool _connected;
     private readonly object _release = new();
+    private readonly ConcurrentDictionary<Guid, int> _notifications = new();
+    private volatile string _responseSubscription = "not tried";
 
     public bool IsConnected => _connected && _device?.ConnectionStatus == BluetoothConnectionStatus.Connected;
 
     public event EventHandler<string?>? ConnectionLost;
     public event EventHandler<byte[]>? NotificationReceived;
 
+    public string Diagnostics
+    {
+        get
+        {
+            string mtu;
+            try { mtu = _session?.MaxPduSize.ToString() ?? "?"; }
+            catch (ObjectDisposedException) { mtu = "?"; }
+            var seen = _notifications.IsEmpty ? "none"
+                : string.Join(", ", _notifications.Select(kv => $"{Short(kv.Key)}×{kv.Value}"));
+            return $"ATT MTU {mtu}; reply characteristic subscription: {_responseSubscription}; " +
+                   $"notifications since connecting: {seen}";
+        }
+    }
+
+    private static string Short(Guid uuid) => uuid.ToString()[..8];
+
+    public async Task<int> WaitForMtuExchangeAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            int mtu;
+            try { mtu = _session?.MaxPduSize ?? BleSession.DefaultAttMtu; }
+            catch (ObjectDisposedException) { return BleSession.DefaultAttMtu; }
+            if (mtu > BleSession.DefaultAttMtu || DateTime.UtcNow >= deadline)
+            {
+                if (sw.ElapsedMilliseconds >= 50) log.Info($"waited {sw.ElapsedMilliseconds} ms for the MTU exchange: ATT MTU {mtu}");
+                return mtu;
+            }
+            await Task.Delay(50, ct).ConfigureAwait(false);
+        }
+    }
+
     public async Task ConnectAsync(ulong address, CancellationToken ct)
     {
         await DisconnectAsync().ConfigureAwait(false);
+        _notifications.Clear();
+        _responseSubscription = "not tried";
 
         _device = await BluetoothLEDevice.FromBluetoothAddressAsync(address).AsTask(ct).ConfigureAwait(false)
                   ?? throw new BleException(BleErrorKind.DeviceNotFound);
@@ -59,8 +98,18 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
         _response = await FindCharacteristicAsync(_service, AerGatt.Response, ct).ConfigureAwait(false);
         if (_response is null) log.Warn("response characteristic not found; battery/refill status won't be readable");
         else log.Info($"response characteristic properties: {_response.CharacteristicProperties}");
-        foreach (var c in new[] { _characteristic, _response })
-            if (c is not null) await EnableNotificationsAsync(c, ct).ConfigureAwait(false);
+        await EnableNotificationsAsync(_characteristic, ct).ConfigureAwait(false);
+        if (_response is null)
+        {
+            _responseSubscription = "characteristic not found";
+        }
+        else
+        {
+            _responseSubscription = await EnableNotificationsAsync(_response, ct).ConfigureAwait(false);
+            if (_responseSubscription != "on")
+                log.Info("expected: the aer's reply characteristic has no CCCD (macOS reports the same), " +
+                         "yet Windows still delivers its notifications (sprays show as confirmed)");
+        }
         // Service and characteristic lookups can be answered from Windows' GATT cache while
         // the aer is busy with another computer or the phone. Only report ready once the radio
         // link is really up, so the session can wait and retry instead of failing the write.
@@ -171,28 +220,29 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
     /// replies still arrive. The CCCD write is retried because, like service discovery, it can
     /// fail while the link is still coming up.
     /// </summary>
-    private async Task EnableNotificationsAsync(GattCharacteristic c, CancellationToken ct)
+    /// <returns>"on", or why the subscription failed (for <see cref="Diagnostics"/>).</returns>
+    private async Task<string> EnableNotificationsAsync(GattCharacteristic c, CancellationToken ct)
     {
         c.ValueChanged += OnValueChanged;
         var props = c.CharacteristicProperties;
         if (!props.HasFlag(GattCharacteristicProperties.Notify) && !props.HasFlag(GattCharacteristicProperties.Indicate))
         {
             log.Info($"{c.Uuid} doesn't advertise notify ({props}); listening anyway");
-            return;
+            return $"no notify property ({props})";
         }
         var cccd = props.HasFlag(GattCharacteristicProperties.Notify)
             ? GattClientCharacteristicConfigurationDescriptorValue.Notify
             : GattClientCharacteristicConfigurationDescriptorValue.Indicate;
+        string why = "";
         for (int attempt = 1; attempt <= NotifyAttempts; attempt++)
         {
-            string why;
             try
             {
                 var r = await c.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(cccd).AsTask(ct).ConfigureAwait(false);
                 if (r.Status == GattCommunicationStatus.Success)
                 {
                     log.Info($"notifications on for {c.Uuid}");
-                    return;
+                    return "on";
                 }
                 why = $"{r.Status}{(r.ProtocolError is byte e ? $" (ATT error 0x{e:X2})" : "")}";
             }
@@ -204,6 +254,7 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
             if (attempt < NotifyAttempts) await Task.Delay(TimeSpan.FromMilliseconds(300 * attempt), ct).ConfigureAwait(false);
         }
         log.Info($"still listening on {c.Uuid} in case the device notifies anyway");
+        return $"CCCD write failed: {why}";
     }
 
     public async Task<string> WriteAsync(byte[] data, WriteMode mode, CancellationToken ct)
@@ -302,6 +353,7 @@ public sealed class WinRtBleLink(FileLogger log) : IBleLink
     private void OnValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
     {
         var value = args.CharacteristicValue.ToArray();
+        _notifications.AddOrUpdate(sender.Uuid, 1, (_, n) => n + 1);
         log.Info($"notification on {sender.Uuid} ({value.Length}B)");
         NotificationReceived?.Invoke(this, value);
     }
