@@ -50,6 +50,7 @@ struct AerWidgetView: View {
             header
             Spacer(minLength: 0)
             lastSpray
+            batteryWarning
             sprayButton(compact: true)
         }
     }
@@ -61,10 +62,11 @@ struct AerWidgetView: View {
             VStack(alignment: .leading, spacing: 6) {
                 header
                 lastSpray
+                batteryWarning
                 Spacer(minLength: 0)
                 HStack(spacing: 10) {
                     Label(snap.deviceStatus?.batteryPercent.map { "~\($0)%" } ?? "—",
-                          systemImage: snap.deviceStatus?.batteryLow == true ? "battery.25" : "battery.75")
+                          systemImage: batterySymbol)
                     Label(snap.deviceStatus?.refillPercent.map { "\($0)%" } ?? "—", systemImage: "drop.fill")
                 }
                 .font(.caption.monospacedDigit())
@@ -99,6 +101,22 @@ struct AerWidgetView: View {
         } else {
             Text("No sprays yet").font(.caption2).opacity(0.85)
         }
+    }
+
+    /// Below the vendor app's 2.7 V danger level the aer may ack sprays it can't fire.
+    @ViewBuilder
+    private var batteryWarning: some View {
+        if snap.deviceStatus?.batteryCritical == true {
+            Label("Replace batteries", systemImage: "exclamationmark.triangle.fill")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.yellow)
+                .lineLimit(1)
+        }
+    }
+
+    private var batterySymbol: String {
+        if snap.deviceStatus?.batteryCritical == true { return "battery.0" }
+        return snap.deviceStatus?.batteryLow == true ? "battery.25" : "battery.75"
     }
 
     private func sprayButton(compact: Bool) -> some View {

@@ -63,7 +63,9 @@ public sealed class TrayIcon : IDisposable
         var last = c.LastSpray is { } l ? $"last spray {Pages.SprayPage.Ago(l.Date)}{(l.Success ? "" : " (failed)")}" : "no sprays yet";
         _statusItem.Text = $"{name}: {c.Session.Status.Label()}";
         var status = c.DeviceStatus is { } s ? $"\nbattery {s.BatteryText}, refill {s.RefillText}" : "";
-        _icon.ToolTipText = $"AerControl: {name}, {c.Session.Status.Label()}\n{last}{status}";
+        // Windows cuts tooltips at 127 characters, so the warning goes right after the first line.
+        var warning = c.DeviceStatus?.BatteryWarning is { } w ? $"\n⚠ {w}" : "";
+        _icon.ToolTipText = $"AerControl: {name}, {c.Session.Status.Label()}{warning}\n{last}{status}";
     }
 
     public void ShowNotification(string title, string message) =>

@@ -23,7 +23,8 @@ let package = Package(
         .target(name: "AerProtocol"),
 
         // App Group state shared by the app and the widget extension (no BLE here).
-        .target(name: "AerShared"),
+        // AerProtocol is Foundation-only, so the widget can link it for the vendor thresholds.
+        .target(name: "AerShared", dependencies: ["AerProtocol"]),
 
         // CoreBluetooth service, settings, history, scheduler, hotkey, logging.
         .target(name: "AerKit", dependencies: ["AerProtocol", "AerShared"]),

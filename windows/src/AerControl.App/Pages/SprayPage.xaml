@@ -46,7 +46,7 @@
                         </StackPanel>
                     </Border>
                     <Border CornerRadius="12" Padding="10,4" Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                            ToolTipService.ToolTip="Battery">
+                            ToolTipService.ToolTip="Battery. The official app warns below 2.8 V and asks for new batteries below 2.7 V.">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE83F;" FontSize="14" />
                             <TextBlock x:Name="BatteryText" Text="—" />
@@ -61,6 +61,8 @@
                     </Border>
                 </StackPanel>
                 <TextBlock x:Name="LastSprayText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Name="BatteryHint" TextWrapping="Wrap" Visibility="Collapsed"
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                 <TextBlock x:Name="RefillHint" TextWrapping="Wrap" Visibility="Collapsed"
                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
                            Text="The device has counted more sprays than a can holds. Just put in a new can? Press “Reset refill…”." />

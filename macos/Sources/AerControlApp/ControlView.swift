@@ -98,6 +98,7 @@ struct ControlView: View {
                 } else {
                     Text("No sprays yet").foregroundStyle(.secondary)
                 }
+                BatteryWarningLine(status: controller.deviceStatus)
                 if controller.deviceStatus?.refillNeedsReset == true {
                     Text("The device has counted more sprays than a can holds. Just put in a new can? Press “Reset refill…”.")
                         .font(.callout).foregroundStyle(.orange)
@@ -149,12 +150,18 @@ struct DeviceStatusChips: View {
     var body: some View {
         HStack(spacing: 6) {
             chip(symbol: batterySymbol, text: batteryText,
-                 help: "Battery \(status?.batteryVoltsText ?? "unknown"). The percentage is estimated from voltage (2.4–3.2 V); the official app warns below 2.8 V.",
-                 warn: status?.batteryLow == true)
+                 help: "Battery \(status?.batteryVoltsText ?? "unknown"). The percentage is estimated from voltage (2.4–3.2 V); the official app warns below 2.8 V and asks for new batteries below 2.7 V.",
+                 tint: batteryTint)
             chip(symbol: "drop.fill", text: refillText,
                  help: status?.totalSprays.map { "\($0) sprays since the last refill reset (a refill lasts about \(status?.refillCapacity ?? 2200))." } ?? "Refill level",
-                 warn: (status?.refillPercent ?? 100) <= 7)
+                 tint: (status?.refillPercent ?? 100) <= 7 ? .orange : .secondary)
         }
+    }
+
+    /// Orange for the vendor app's "low" (< 2.8 V), red for its "danger" (< 2.7 V).
+    private var batteryTint: Color {
+        if status?.batteryCritical == true { return .red }
+        return status?.batteryLow == true ? .orange : .secondary
     }
 
     private var batteryText: String {
@@ -177,14 +184,29 @@ struct DeviceStatusChips: View {
         }
     }
 
-    private func chip(symbol: String, text: String, help: String, warn: Bool) -> some View {
+    private func chip(symbol: String, text: String, help: String, tint: Color) -> some View {
         Label(text, systemImage: symbol)
             .font(.callout.monospacedDigit())
-            .foregroundStyle(warn ? Color.orange : Color.secondary)
+            .foregroundStyle(tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(.quaternary.opacity(0.5), in: Capsule())
             .help(help)
+    }
+}
+
+/// "Batteries low (2.50 V). Replace them…", shown only below the vendor app's 2.7 V danger level.
+struct BatteryWarningLine: View {
+    let status: DeviceStatus?
+    var font: Font = .callout
+
+    var body: some View {
+        if let warning = status?.batteryWarning {
+            Label(warning, systemImage: "exclamationmark.triangle.fill")
+                .font(font)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
