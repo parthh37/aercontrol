@@ -60,10 +60,13 @@ Later findings (2026-10-18):
   (write right after connecting, quiet for 1 s) also fired. Both clients now hold off any
   write for **3 s after a spray** (`postSprayQuiet` / `PostSprayQuiet`). The 1 s reply
   window was meant to cover this, but it ends as soon as the ack arrives (~70 ms).
-* **Post-connect settle.** Both clients also wait until a fresh link has been up for 2 s
-  before writing (`postConnectSettle` / `PostConnectSettle`). This was added before the
-  cause above was found. Attempt 2 suggests it isn't needed, which still has to be confirmed
-  with `aerctl spray --settle 0`.
+* **A spray written right after connecting doesn't fire either.** Live test (2026-10-18):
+  `aerctl spray --settle 0` wrote 0 ms after the link was ready, with nothing behind it. The
+  aer acked it and didn't spray. With a 2 s wait and nothing behind it, two sprays in a row
+  fired. Both clients therefore wait until a fresh link has been up for **2 s** before
+  writing (`postConnectSettle` / `PostConnectSettle`). This matches the original report
+  that the first spray after connecting misfires. Field test attempt 2 above (which sprayed)
+  must have had some delay that wasn't logged.
 * **The vendor app (v2.4) never writes right after connecting.** On connect it waits 2 s,
   discovers characteristics, subscribes, and requests **MTU 185**. It gets the unique id
   after 4 s, fetches status after 3 s and sets the time after 6 s. Its BLE library delays

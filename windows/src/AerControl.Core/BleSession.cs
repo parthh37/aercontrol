@@ -92,9 +92,9 @@ public sealed class BleSession : IDisposable
     public TimeSpan BusyRetryDelay { get; set; } = TimeSpan.FromSeconds(1);
     /// <summary>Base delay for reconnect backoff (doubles per attempt, capped at 60 s).</summary>
     public TimeSpan ReconnectBaseDelay { get; set; } = TimeSpan.FromSeconds(1);
-    /// <summary>How long a fresh link must be up before the first write. A spray sent the moment
-    /// the aer wakes up is acked and counted but often doesn't fire; the second one, with the
-    /// aer awake, does. The vendor app never writes sooner than ~2.5 s after connecting.</summary>
+    /// <summary>How long a fresh link must be up before the first write. A spray written right
+    /// after connecting is acked and counted but doesn't fire; 2 s later it does (live tests
+    /// 2026-10-18). The vendor app never writes sooner than ~2.5 s after connecting.</summary>
     public TimeSpan PostConnectSettle { get; set; } = TimeSpan.FromSeconds(2);
     /// <summary>How long after a spray no other command may be written. A fetch-status ~100 ms
     /// behind a spray left it acked and counted but not fired; with nothing written behind it,
