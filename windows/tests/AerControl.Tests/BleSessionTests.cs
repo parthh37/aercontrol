@@ -257,8 +257,8 @@ public class BleSessionTests
         s.IdleTimeout = TimeSpan.Zero; // stay-connected mode: always reconnect
         await s.SendAsync([1]);
         link.Drop();
-        await WaitUntil(() => link.Connects == 2 && link.IsConnected, TimeSpan.FromSeconds(2));
-        Assert.Equal(LinkStatus.Connected, s.Status);
+        // The link reports connected a moment before the session publishes Connected.
+        await WaitUntil(() => link.Connects == 2 && s.Status == LinkStatus.Connected, TimeSpan.FromSeconds(2));
     }
 
     [Fact]
