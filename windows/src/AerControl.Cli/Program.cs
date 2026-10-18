@@ -11,6 +11,7 @@ commands:
   scan [--seconds N] [--all]       list nearby devices (default 10s, aer/service filter)
   spray [--device ADDR] [--mn N] [--no-increment] [--mode auto|with|without]
         [--count N] [--interval SECONDS] [--raw HEX]
+        [--settle SECONDS]         wait after connecting before writing (default 2)
                                    connect and send the spray payload
   inspect [--device ADDR]          connect and list all GATT services/characteristics
   status [--device ADDR]           battery, refill level, firmware (fetch status)
@@ -29,7 +30,7 @@ var argv = args.ToList();
 var command = argv.FirstOrDefault() ?? "help";
 var options = new Dictionary<string, string>();
 var flags = new HashSet<string>();
-string[] valued = ["seconds", "device", "mn", "mode", "count", "interval", "raw"];
+string[] valued = ["seconds", "device", "mn", "mode", "count", "interval", "raw", "settle"];
 var positional = new List<string>();
 for (int i = 1; i < argv.Count; i++)
 {
@@ -204,6 +205,12 @@ switch (command)
         if (c.Settings.DeviceAddress is null)
             return Fail("no device. Run `aerctl scan`, then `aerctl remember <ADDR>` or pass --device");
         await c.InitializeAsync();
+        if (options.TryGetValue("settle", out var settleText))
+        {
+            if (!double.TryParse(settleText, System.Globalization.CultureInfo.InvariantCulture, out var settle) || settle < 0)
+                return Fail("--settle must be a number of seconds");
+            c.Session.PostConnectSettle = TimeSpan.FromSeconds(settle);
+        }
 
         int count = options.TryGetValue("count", out var cs) && int.TryParse(cs, out var n) ? Math.Max(1, n) : 1;
         double interval = options.TryGetValue("interval", out var iv) && double.TryParse(iv, out var ivs) ? ivs : 3;

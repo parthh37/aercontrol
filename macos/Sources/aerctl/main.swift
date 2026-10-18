@@ -12,6 +12,7 @@ commands:
         [--count N] [--interval SECONDS]
                                    connect and send the spray payload
         [--raw HEX]                use HEX bytes instead of the CBOR payload
+        [--settle SECONDS]         wait after connecting before writing (default 2)
   inspect [--device UUID]          connect and list all GATT services/characteristics
   probe [--device UUID] [--seconds N]
                                    read every characteristic + listen to notifications
@@ -42,7 +43,7 @@ struct Args {
             if a.hasPrefix("--") {
                 let key = String(a.dropFirst(2))
                 if i + 1 < argv.count, !argv[i + 1].hasPrefix("--"),
-                   ["seconds", "device", "mn", "mode", "count", "interval", "raw"].contains(key) {
+                   ["seconds", "device", "mn", "mode", "count", "interval", "raw", "settle"].contains(key) {
                     options[key] = argv[i + 1]
                     i += 1
                 } else {
@@ -200,6 +201,10 @@ func run() async {
         default: fail("--mode must be auto, with, or without")
         }
         controller.settings.idleDisconnectSeconds = 0 // CLI disconnects explicitly
+        if let s = args.options["settle"] {
+            guard let seconds = Double(s), seconds >= 0 else { fail("--settle must be a number of seconds") }
+            controller.ble.postConnectSettle = seconds
+        }
         guard controller.settings.deviceIdentifier != nil else {
             fail("no device. Run `aerctl scan`, then `aerctl remember <UUID>` or pass --device")
         }

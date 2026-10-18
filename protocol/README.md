@@ -51,14 +51,19 @@ Field notes from the first live test (2026-10-15, macOS):
 
 Later findings (2026-10-18):
 
-* **First spray after a wake-up misfires.** The user reported that the first spray after
-  connecting doesn't fire and the second one does. The macOS log shows both sprays acked
-  (`{mT:154, ack:200}`) and counted (`sn[0]` went up each time), so the firmware takes the
-  command but doesn't reliably fire it. The misfires were written about 120–260 ms after
-  connecting to an aer that had been idle for minutes. The good ones went to an aer that had
-  been awake for a few seconds. Both clients now wait until the link has been up for 2 s
-  before the first write on a fresh connection (`postConnectSettle` / `PostConnectSettle`).
-  Battery was 2.50 V at the time, below the vendor's 2.7 V danger level, which may make this worse.
+* **A command written right behind a spray stops it.** Since v1.1.0 both clients sent
+  fetch status about 50–150 ms after every spray. The aer acked those sprays
+  (`{mT:154, ack:200}`) and counted them (`sn[0]` went up), but they didn't fire, while
+  the aer's own button sprayed fine. Live test (2026-10-18): the same spray with nothing
+  written behind it fired twice in a row, with `mN` 154 (the vendor's value) and with `mN`
+  131. A disconnect ~70 ms after the write didn't stop it either. Field test attempt 2 above
+  (write right after connecting, quiet for 1 s) also fired. Both clients now hold off any
+  write for **3 s after a spray** (`postSprayQuiet` / `PostSprayQuiet`). The 1 s reply
+  window was meant to cover this, but it ends as soon as the ack arrives (~70 ms).
+* **Post-connect settle.** Both clients also wait until a fresh link has been up for 2 s
+  before writing (`postConnectSettle` / `PostConnectSettle`). This was added before the
+  cause above was found. Attempt 2 suggests it isn't needed, which still has to be confirmed
+  with `aerctl spray --settle 0`.
 * **The vendor app (v2.4) never writes right after connecting.** On connect it waits 2 s,
   discovers characteristics, subscribes, and requests **MTU 185**. It gets the unique id
   after 4 s, fetches status after 3 s and sets the time after 6 s. Its BLE library delays

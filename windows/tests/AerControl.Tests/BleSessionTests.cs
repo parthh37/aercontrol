@@ -95,6 +95,7 @@ public class BleSessionTests
             BusyRetryDelay = TimeSpan.FromMilliseconds(10),
             ConnectTimeout = TimeSpan.FromMilliseconds(500),
             PostConnectSettle = TimeSpan.Zero,
+            PostSprayQuiet = TimeSpan.Zero,
             MtuExchangeTimeout = TimeSpan.FromMilliseconds(300),
         };
         s.SelectDeviceAsync(device).GetAwaiter().GetResult();
@@ -426,6 +427,29 @@ public class BleSessionTests
         await s.SendAsync(AerCommands.FetchStatus(160), AerMessageType.FetchStatus.ResponseType());
         Assert.Single(link.Writes);
         Assert.Equal(23, link.MtuAtWrite);
+    }
+
+    [Fact]
+    public async Task CommandRightAfterASprayWaitsForTheSprayToFinish()
+    {
+        var (s, link, _) = Make();
+        s.PostSprayQuiet = TimeSpan.FromMilliseconds(300);
+        await s.SendAsync(new SprayPayload().Encode());
+        await s.SendAsync(AerCommands.FetchStatus(161), AerMessageType.FetchStatus.ResponseType());
+        Assert.True(link.WriteTimesUtc[1] - link.WriteTimesUtc[0] >= TimeSpan.FromMilliseconds(280),
+                    $"status went out {(link.WriteTimesUtc[1] - link.WriteTimesUtc[0]).TotalMilliseconds:0} ms after the spray");
+    }
+
+    [Fact]
+    public async Task OnlySpraysStartTheQuietWindow()
+    {
+        var (s, link, _) = Make();
+        s.PostSprayQuiet = TimeSpan.FromSeconds(5);
+        await s.SendAsync(AerCommands.FetchStatus(161), AerMessageType.FetchStatus.ResponseType());
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await s.SendAsync(new SprayPayload().Encode());
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), $"spray waited {sw.ElapsedMilliseconds} ms");
+        Assert.Equal(2, link.Writes.Count);
     }
 
     private static async Task WaitUntil(Func<bool> condition, TimeSpan timeout)

@@ -141,6 +141,11 @@ public final class BLEService: NSObject, ObservableObject {
     /// awake, does. The vendor app never writes sooner than ~2.5 s after connecting.
     public var postConnectSettle: TimeInterval = 2.0
     private var readyAt = Date.distantPast
+    /// How long after a spray no other command may be written. A fetch-status ~100 ms behind
+    /// a spray left it acked and counted but not fired; with nothing written behind it, it
+    /// fires (live test 2026-10-18). This also spaces out double-taps and scheduled sprays.
+    public var postSprayQuiet: TimeInterval = 3.0
+    private var lastSprayAt = Date.distantPast
     /// Every notification from the device, for diagnostics.
     public var onNotification: ((Data) -> Void)?
 
@@ -334,20 +339,29 @@ public final class BLEService: NSObject, ObservableObject {
         return (p, c)
     }
 
-    /// `ensureConnected`, then waits out `postConnectSettle` on a fresh link. Measured from when
-    /// the link came up, so a spray a few seconds after connecting doesn't wait at all. If the
-    /// link drops meanwhile, `ensureConnected` reconnects, which restarts the clock.
-    private func settledLink() async throws -> (CBPeripheral, CBCharacteristic) {
+    /// `ensureConnected`, then waits until a write is safe: `postConnectSettle` after the link
+    /// came up and `postSprayQuiet` after the last spray. Both are measured from those moments,
+    /// so a command long after either doesn't wait. If the link drops meanwhile,
+    /// `ensureConnected` reconnects, which restarts the settle clock.
+    private func writableLink() async throws -> (CBPeripheral, CBCharacteristic) {
         var link = try await ensureConnected()
         for _ in 0..<3 {
-            let remaining = postConnectSettle - Date().timeIntervalSince(readyAt)
+            let settle = postConnectSettle - Date().timeIntervalSince(readyAt)
+            let quiet = postSprayQuiet - Date().timeIntervalSince(lastSprayAt)
+            let remaining = max(settle, quiet)
             guard remaining > 0 else { break }
-            log.info("letting the aer wake up for \(Int(remaining * 1000)) ms before writing")
-            idleTask?.cancel() // a short idle hold mustn't drop the link mid-settle; send() re-arms it
+            log.info(quiet >= settle
+                     ? "waiting \(Int(remaining * 1000)) ms for the spray to finish before writing"
+                     : "letting the aer wake up for \(Int(remaining * 1000)) ms before writing")
+            idleTask?.cancel() // a short idle hold mustn't drop the link mid-wait; send() re-arms it
             try await Task.sleep(for: .seconds(remaining))
             link = try await ensureConnected()
         }
         return link
+    }
+
+    private static func isSpray(_ data: Data) -> Bool {
+        AerReply.parse([UInt8](data))?.messageType == Int(AerMessageType.sprayNow.rawValue)
     }
 
     /// Scans until the peripheral with `id` shows up. Used when CoreBluetooth's cache has
@@ -388,8 +402,9 @@ public final class BLEService: NSObject, ObservableObject {
         // it cut the link in the same millisecond as a spray write. `touch()` re-arms it after.
         idleTask?.cancel()
         defer { touch() }
-        let (p, c) = try await settledLink()
+        let (p, c) = try await writableLink()
         let mode = try await write(data, to: c, on: p)
+        if Self.isSpray(data) { lastSprayAt = .now }
         let reply = await awaitReply()
         return WriteOutcome(mode: mode, reply: reply)
     }
