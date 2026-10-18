@@ -136,14 +136,14 @@ public final class BLEService: NSObject, ObservableObject {
     /// How long to listen for a notification after a write. It also acts as a settle time,
     /// so a write-without-response isn't dropped by a disconnect right behind it.
     public var replyWindow: TimeInterval = 1.0
-    /// How long a fresh link must be up before the first write. A spray written right after
-    /// connecting is acked and counted but doesn't fire; 2 s later it does (live tests
-    /// 2026-10-18). The vendor app never writes sooner than ~2.5 s after connecting.
+    /// How long a fresh link must be up before the first write. Copies the vendor app, which
+    /// never writes sooner than ~2.5 s after connecting. A precaution: sprays that are acked
+    /// but don't fire weren't explained by timing (protocol/README.md, 2026-10-18).
     public var postConnectSettle: TimeInterval = 2.0
     private var readyAt = Date.distantPast
-    /// How long after a spray no other command may be written. A fetch-status ~100 ms behind
-    /// a spray left it acked and counted but not fired; with nothing written behind it, it
-    /// fires (live test 2026-10-18). This also spaces out double-taps and scheduled sprays.
+    /// How long after a spray no other command may be written. Copies the vendor app, which
+    /// never writes anything right after a spray. A precaution, like `postConnectSettle`; it
+    /// also spaces out double-taps and scheduled sprays.
     public var postSprayQuiet: TimeInterval = 3.0
     private var lastSprayAt = Date.distantPast
     /// Every notification from the device, for diagnostics.

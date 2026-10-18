@@ -51,22 +51,27 @@ Field notes from the first live test (2026-10-15, macOS):
 
 Later findings (2026-10-18):
 
-* **A command written right behind a spray stops it.** Since v1.1.0 both clients sent
-  fetch status about 50–150 ms after every spray. The aer acked those sprays
-  (`{mT:154, ack:200}`) and counted them (`sn[0]` went up), but they didn't fire, while
-  the aer's own button sprayed fine. Live test (2026-10-18): the same spray with nothing
-  written behind it fired twice in a row, with `mN` 154 (the vendor's value) and with `mN`
-  131. A disconnect ~70 ms after the write didn't stop it either. Field test attempt 2 above
-  (write right after connecting, quiet for 1 s) also fired. Both clients now hold off any
-  write for **3 s after a spray** (`postSprayQuiet` / `PostSprayQuiet`). The 1 s reply
-  window was meant to cover this, but it ends as soon as the ack arrives (~70 ms).
-* **A spray written right after connecting doesn't fire either.** Live test (2026-10-18):
-  `aerctl spray --settle 0` wrote 0 ms after the link was ready, with nothing behind it. The
-  aer acked it and didn't spray. With a 2 s wait and nothing behind it, two sprays in a row
-  fired. Both clients therefore wait until a fresh link has been up for **2 s** before
-  writing (`postConnectSettle` / `PostConnectSettle`). This matches the original report
-  that the first spray after connecting misfires. Field test attempt 2 above (which sprayed)
-  must have had some delay that wasn't logged.
+* **Sprays are sometimes acked and counted but don't fire.** The aer replies
+  `{mT:154, ack:200}` and `sn[0]` goes up, but nothing comes out. The aer's own button
+  still sprays. Live results on 2026-10-18 (local time, all `rI:0`):
+
+  | Time  | Sent by       | Wait after connect | Command right behind | Fired? |
+  |-------|---------------|--------------------|----------------------|--------|
+  | 05:35 | 1.4.0 app ×4  | none               | fetch status ~100 ms | 0 of 4 |
+  | 05:42 | CLI `--raw` ×2 | 2 s               | none                 | 2 of 2 |
+  | 05:49 | CLI `--raw` ×1 | none              | none                 | 0 of 1 |
+  | 05:54 | 1.4.0 app ×4  | none               | fetch status ~100 ms | 4 of 4 |
+
+  The same app and timing went from 0/4 to 4/4, so timing doesn't explain it. `mN` (131,
+  132, 154) doesn't matter, and the status fields (`cS` 0, `bV` ~2500, counters) were the
+  same in failing and working runs. Prime suspect: **low battery**. `bV` has read ~2.50 V
+  since 2026-10-15, below the vendor's 2.7 V danger level, and the vendor app warns *"change
+  your batteries to ensure uninterrupted freshness"*. BLE needs little current, so acks
+  keep coming while the motor fails on and off. Not yet confirmed with fresh batteries.
+* **Timing precautions.** The clients copy the vendor app's timing anyway: they wait until a
+  fresh link has been up for 2 s before writing (`postConnectSettle` / `PostConnectSettle`),
+  and write nothing for 3 s after a spray (`postSprayQuiet` / `PostSprayQuiet`). The table
+  above doesn't show that either one is needed.
 * **The vendor app (v2.4) never writes right after connecting.** On connect it waits 2 s,
   discovers characteristics, subscribes, and requests **MTU 185**. It gets the unique id
   after 4 s, fetches status after 3 s and sets the time after 6 s. Its BLE library delays

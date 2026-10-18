@@ -92,13 +92,13 @@ public sealed class BleSession : IDisposable
     public TimeSpan BusyRetryDelay { get; set; } = TimeSpan.FromSeconds(1);
     /// <summary>Base delay for reconnect backoff (doubles per attempt, capped at 60 s).</summary>
     public TimeSpan ReconnectBaseDelay { get; set; } = TimeSpan.FromSeconds(1);
-    /// <summary>How long a fresh link must be up before the first write. A spray written right
-    /// after connecting is acked and counted but doesn't fire; 2 s later it does (live tests
-    /// 2026-10-18). The vendor app never writes sooner than ~2.5 s after connecting.</summary>
+    /// <summary>How long a fresh link must be up before the first write. Copies the vendor app,
+    /// which never writes sooner than ~2.5 s after connecting. A precaution: sprays that are acked
+    /// but don't fire weren't explained by timing (protocol/README.md, 2026-10-18).</summary>
     public TimeSpan PostConnectSettle { get; set; } = TimeSpan.FromSeconds(2);
-    /// <summary>How long after a spray no other command may be written. A fetch-status ~100 ms
-    /// behind a spray left it acked and counted but not fired; with nothing written behind it,
-    /// it fires (live test 2026-10-18). This also spaces out double-taps and scheduled sprays.</summary>
+    /// <summary>How long after a spray no other command may be written. Copies the vendor app,
+    /// which never writes anything right after a spray. A precaution, like PostConnectSettle; it
+    /// also spaces out double-taps and scheduled sprays.</summary>
     public TimeSpan PostSprayQuiet { get; set; } = TimeSpan.FromSeconds(3);
     /// <summary>How long a command that expects a reply waits for the MTU exchange. The status
     /// reply is 105 bytes, so at the default MTU (20-byte notifications) the aer never sends it;
