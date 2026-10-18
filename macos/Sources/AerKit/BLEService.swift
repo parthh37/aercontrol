@@ -384,6 +384,9 @@ public final class BLEService: NSObject, ObservableObject {
     }
 
     private func performSend(_ data: Data) async throws -> WriteOutcome {
+        // The idle timer armed by the previous command must not fire mid-send: with the 3 s hold
+        // it cut the link in the same millisecond as a spray write. `touch()` re-arms it after.
+        idleTask?.cancel()
         defer { touch() }
         let (p, c) = try await settledLink()
         let mode = try await write(data, to: c, on: p)
